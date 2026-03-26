@@ -261,6 +261,112 @@ func TestDaemon_MultipleProcesses(t *testing.T) {
 	}
 }
 
+func TestDaemon_RunWithAlias(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+		Alias:   "deploy",
+	})
+	if !resp.Success {
+		t.Fatalf("run failed: %s", resp.Error)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// List and verify alias
+	listResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqList})
+	if len(listResp.Processes) != 1 {
+		t.Fatalf("expected 1 process, got %d", len(listResp.Processes))
+	}
+	if listResp.Processes[0].Alias != "deploy" {
+		t.Errorf("expected alias 'deploy', got %q", listResp.Processes[0].Alias)
+	}
+}
+
+func TestDaemon_OperationsByAlias(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	// Spawn with alias
+	sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "cat",
+		Alias:   "mycat",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Send input via alias
+	sendResp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqSend,
+		Alias: "mycat",
+		Input: "alias-test-input",
+	})
+	if !sendResp.Success {
+		t.Fatalf("send via alias failed: %s", sendResp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Log via alias
+	logResp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "mycat",
+		Lines: 10,
+	})
+	if !logResp.Success {
+		t.Fatalf("log via alias failed: %s", logResp.Error)
+	}
+	if !strings.Contains(logResp.Output, "alias-test-input") {
+		t.Errorf("expected 'alias-test-input' in output, got: %q", logResp.Output)
+	}
+
+	// Kill via alias
+	killResp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqKill,
+		Alias: "mycat",
+	})
+	if !killResp.Success {
+		t.Fatalf("kill via alias failed: %s", killResp.Error)
+	}
+}
+
+func TestDaemon_DuplicateAlias(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+		Alias:   "same",
+	})
+	if !resp.Success {
+		t.Fatalf("first run failed: %s", resp.Error)
+	}
+
+	resp2 := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+		Alias:   "same",
+	})
+	if resp2.Success {
+		t.Error("expected failure for duplicate alias")
+	}
+}
+
+func TestDaemon_AliasNotFound(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "ghost",
+		Lines: 10,
+	})
+	if resp.Success {
+		t.Error("expected failure for non-existent alias")
+	}
+}
+
 func TestDaemon_Shutdown(t *testing.T) {
 	_, sockPath := startTestDaemon(t)
 

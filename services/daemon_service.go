@@ -77,6 +77,17 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 		return
 	}
 
+	// Resolve alias to ID for commands that reference a process
+	if req.Alias != "" && req.ID == 0 && req.Type != domain.ReqRun {
+		id, err := ds.pm.ResolveID(req.Alias)
+		if err != nil {
+			ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
+			conn.Close()
+			return
+		}
+		req.ID = id
+	}
+
 	ds.log.Debug().Str("type", string(req.Type)).Int("id", req.ID).Msg("request")
 
 	switch req.Type {
@@ -110,12 +121,12 @@ func (ds *DaemonServer) sendResponse(conn net.Conn, resp domain.DaemonResponse) 
 
 func (ds *DaemonServer) handleRun(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	id, err := ds.pm.Spawn(req.Command)
+	id, err := ds.pm.Spawn(req.Command, req.Alias)
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
-	ds.log.Info().Int("id", id).Str("cmd", req.Command).Msg("spawned process")
+	ds.log.Info().Int("id", id).Str("alias", req.Alias).Str("cmd", req.Command).Msg("spawned process")
 	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: id})
 }
 

@@ -2,7 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/AxeForging/yoink/services"
@@ -22,13 +21,10 @@ func NewLogAction(client *services.ClientService) *LogAction {
 // Execute prints the last N lines of output for the given process.
 func (a *LogAction) Execute(c *cli.Context) error {
 	if c.NArg() < 1 {
-		return fmt.Errorf("usage: yoink log <id> [--lines N]")
+		return fmt.Errorf("usage: yoink log <id|alias> [--lines N]")
 	}
 
-	id, err := strconv.Atoi(c.Args().First())
-	if err != nil {
-		return fmt.Errorf("invalid process ID: %s", c.Args().First())
-	}
+	id, alias := parseProcessRef(c.Args().First())
 
 	lines := c.Int("lines")
 	if lines <= 0 {
@@ -38,6 +34,7 @@ func (a *LogAction) Execute(c *cli.Context) error {
 	resp, err := a.client.Do(domain.DaemonRequest{
 		Type:  domain.ReqLog,
 		ID:    id,
+		Alias: alias,
 		Lines: lines,
 	})
 	if err != nil {

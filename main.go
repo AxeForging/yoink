@@ -63,6 +63,7 @@ func main() {
 			Name:    "run",
 			Aliases: []string{"r"},
 			Usage:   "Spawn a command in the background",
+			Flags:   []cli.Flag{aliasFlag},
 			Action:  runAction.Execute,
 		},
 		{

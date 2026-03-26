@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/AxeForging/yoink/services"
@@ -25,13 +24,10 @@ func NewAttachAction(client *services.ClientService) *AttachAction {
 // Execute attaches the terminal to the process. Ctrl+] to detach.
 func (a *AttachAction) Execute(c *cli.Context) error {
 	if c.NArg() < 1 {
-		return fmt.Errorf("usage: yoink attach <id>")
+		return fmt.Errorf("usage: yoink attach <id|alias>")
 	}
 
-	id, err := strconv.Atoi(c.Args().First())
-	if err != nil {
-		return fmt.Errorf("invalid process ID: %s", c.Args().First())
-	}
+	id, alias := parseProcessRef(c.Args().First())
 
 	if err := a.client.EnsureDaemon(); err != nil {
 		return err
@@ -43,7 +39,7 @@ func (a *AttachAction) Execute(c *cli.Context) error {
 	}
 	defer conn.Close()
 
-	req := domain.DaemonRequest{Type: domain.ReqAttach, ID: id}
+	req := domain.DaemonRequest{Type: domain.ReqAttach, ID: id, Alias: alias}
 	if err := a.client.SendRequest(conn, req); err != nil {
 		return err
 	}

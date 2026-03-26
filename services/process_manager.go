@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ type managedProcess struct {
 // ProcessManager manages background processes with PTY I/O.
 type ProcessManager struct {
 	processes map[int]*managedProcess
+	aliases   map[string]int
 	nextID    int
 	mu        sync.RWMutex
 	bufSize   int
@@ -36,14 +38,21 @@ type ProcessManager struct {
 func NewProcessManager(bufSize int) *ProcessManager {
 	return &ProcessManager{
 		processes: make(map[int]*managedProcess),
+		aliases:   make(map[string]int),
 		nextID:    1,
 		bufSize:   bufSize,
 	}
 }
 
 // Spawn starts a new background process and returns its ID.
-func (pm *ProcessManager) Spawn(command string) (int, error) {
+func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
 	pm.mu.Lock()
+	if alias != "" {
+		if _, exists := pm.aliases[alias]; exists {
+			pm.mu.Unlock()
+			return 0, fmt.Errorf("alias %q is already in use", alias)
+		}
+	}
 	id := pm.nextID
 	pm.nextID++
 	pm.mu.Unlock()
@@ -60,6 +69,7 @@ func (pm *ProcessManager) Spawn(command string) (int, error) {
 	mp := &managedProcess{
 		info: domain.ProcessInfo{
 			ID:        id,
+			Alias:     alias,
 			Command:   command,
 			State:     domain.StateRunning,
 			PID:       cmd.Process.Pid,
@@ -72,11 +82,30 @@ func (pm *ProcessManager) Spawn(command string) (int, error) {
 
 	pm.mu.Lock()
 	pm.processes[id] = mp
+	if alias != "" {
+		pm.aliases[alias] = id
+	}
 	pm.mu.Unlock()
 
 	go pm.captureOutput(mp)
 	go pm.monitorProcess(mp)
 
+	return id, nil
+}
+
+// ResolveID resolves an alias or numeric ID string to a process ID.
+func (pm *ProcessManager) ResolveID(ref string) (int, error) {
+	// Try numeric ID first
+	if id, err := strconv.Atoi(ref); err == nil {
+		return id, nil
+	}
+	// Try alias lookup
+	pm.mu.RLock()
+	id, ok := pm.aliases[ref]
+	pm.mu.RUnlock()
+	if !ok {
+		return 0, fmt.Errorf("no process found with alias %q", ref)
+	}
 	return id, nil
 }
 
@@ -300,6 +329,9 @@ func (pm *ProcessManager) Clean() int {
 	for id, mp := range pm.processes {
 		if mp.info.State != domain.StateRunning {
 			mp.pty.Close()
+			if mp.info.Alias != "" {
+				delete(pm.aliases, mp.info.Alias)
+			}
 			delete(pm.processes, id)
 			count++
 		}

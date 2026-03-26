@@ -2,7 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/AxeForging/yoink/services"
@@ -22,17 +21,15 @@ func NewKillAction(client *services.ClientService) *KillAction {
 // Execute sends SIGTERM (or SIGKILL with --force) to the process.
 func (a *KillAction) Execute(c *cli.Context) error {
 	if c.NArg() < 1 {
-		return fmt.Errorf("usage: yoink kill <id> [--force]")
+		return fmt.Errorf("usage: yoink kill <id|alias> [--force]")
 	}
 
-	id, err := strconv.Atoi(c.Args().First())
-	if err != nil {
-		return fmt.Errorf("invalid process ID: %s", c.Args().First())
-	}
+	id, alias := parseProcessRef(c.Args().First())
 
 	resp, err := a.client.Do(domain.DaemonRequest{
 		Type:  domain.ReqKill,
 		ID:    id,
+		Alias: alias,
 		Force: c.Bool("force"),
 	})
 	if err != nil {

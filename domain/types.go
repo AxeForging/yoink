@@ -14,6 +14,7 @@ const (
 // ProcessInfo holds metadata about a managed background process.
 type ProcessInfo struct {
 	ID         int          `json:"id"`
+	Alias      string       `json:"alias,omitempty"`
 	Command    string       `json:"command"`
 	State      ProcessState `json:"state"`
 	PID        int          `json:"pid"`
@@ -55,6 +56,7 @@ const (
 type DaemonRequest struct {
 	Type     RequestType `json:"type"`
 	ID       int         `json:"id,omitempty"`
+	Alias    string      `json:"alias,omitempty"`
 	Command  string      `json:"command,omitempty"`
 	Input    string      `json:"input,omitempty"`
 	Lines    int         `json:"lines,omitempty"`

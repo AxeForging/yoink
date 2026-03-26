@@ -41,14 +41,18 @@ func (a *LsAction) Execute(c *cli.Context) error {
 	})
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tSTATE\tPID\tEXIT\tSTARTED\tCOMMAND")
+	fmt.Fprintln(w, "ID\tALIAS\tSTATE\tPID\tEXIT\tSTARTED\tCOMMAND")
 	for _, p := range resp.Processes {
 		exitStr := "-"
 		if p.State != domain.StateRunning {
 			exitStr = fmt.Sprintf("%d", p.ExitCode)
 		}
-		fmt.Fprintf(w, "%d\t%s\t%d\t%s\t%s\t%s\n",
-			p.ID, p.State, p.PID, exitStr,
+		aliasStr := "-"
+		if p.Alias != "" {
+			aliasStr = p.Alias
+		}
+		fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%s\t%s\t%s\n",
+			p.ID, aliasStr, p.State, p.PID, exitStr,
 			p.StartedAt.Format("15:04:05"),
 			truncate(p.Command, 60),
 		)

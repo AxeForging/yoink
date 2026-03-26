@@ -26,9 +26,12 @@ func (a *RunAction) Execute(c *cli.Context) error {
 		return fmt.Errorf("usage: yoink run <command>")
 	}
 
+	alias := c.String("alias")
+
 	resp, err := a.client.Do(domain.DaemonRequest{
 		Type:    domain.ReqRun,
 		Command: command,
+		Alias:   alias,
 	})
 	if err != nil {
 		return err
@@ -37,6 +40,10 @@ func (a *RunAction) Execute(c *cli.Context) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	fmt.Printf("Started process %d: %s\n", resp.ID, command)
+	if alias != "" {
+		fmt.Printf("Started process %d (%s): %s\n", resp.ID, alias, command)
+	} else {
+		fmt.Printf("Started process %d: %s\n", resp.ID, command)
+	}
 	return nil
 }
