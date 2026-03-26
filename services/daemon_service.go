@@ -138,11 +138,17 @@ func (ds *DaemonServer) handleList(conn net.Conn) {
 
 func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	lines := req.Lines
-	if lines <= 0 {
-		lines = 50
+	var output string
+	var err error
+	if req.New {
+		output, err = ds.pm.GetNewOutput(req.ID)
+	} else {
+		lines := req.Lines
+		if lines <= 0 {
+			lines = 50
+		}
+		output, err = ds.pm.GetOutput(req.ID, lines)
 	}
-	output, err := ds.pm.GetOutput(req.ID, lines)
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return

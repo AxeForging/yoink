@@ -76,7 +76,7 @@ func main() {
 			Name:    "log",
 			Aliases: []string{"l"},
 			Usage:   "Show recent output from a process",
-			Flags:   []cli.Flag{linesFlag},
+			Flags:   []cli.Flag{linesFlag, newFlag},
 			Action:  logAction.Execute,
 		},
 		{
