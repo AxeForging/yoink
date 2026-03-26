@@ -11,7 +11,7 @@ pre-commit:
       glob: "*.go"
       run: golangci-lint run --timeout=5m
     structlint:
-      run: structlint .
+      run: structlint validate
 
 commit-msg:
   commands:
