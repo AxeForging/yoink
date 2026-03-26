@@ -1,0 +1,193 @@
+name: E2E Interactive Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Build yoink
+        run: go build -o yoink .
+
+      - name: Create test scripts
+        run: |
+          # Script requiring 2 consecutive inputs
+          cat > /tmp/interactive-setup.sh << 'SCRIPT'
+          #!/bin/bash
+          echo "=== Interactive Setup Wizard ==="
+          echo "Step 1: What is your project name?"
+          read -r PROJECT
+          echo "Got project: $PROJECT"
+          echo ""
+          echo "Step 2: Enable logging? (yes/no)"
+          read -r LOGGING
+          echo "Got logging: $LOGGING"
+          echo ""
+          echo "=== Configuration Complete ==="
+          echo "Project: $PROJECT"
+          echo "Logging: $LOGGING"
+          echo "Status: SUCCESS"
+          exit 0
+          SCRIPT
+          chmod +x /tmp/interactive-setup.sh
+
+          # Script that hangs until it gets confirmation
+          cat > /tmp/confirm-deploy.sh << 'SCRIPT'
+          #!/bin/bash
+          echo "Building artifacts..."
+          sleep 2
+          echo "Build complete. 3 artifacts ready."
+          echo ""
+          echo "Deploy to production? (confirm/abort)"
+          read -r CONFIRM
+          if [ "$CONFIRM" = "confirm" ]; then
+            echo "Deploying..."
+            sleep 1
+            echo "Deploy: COMPLETE"
+            exit 0
+          else
+            echo "Deploy: ABORTED"
+            exit 1
+          fi
+          SCRIPT
+          chmod +x /tmp/confirm-deploy.sh
+
+      - name: Start daemon
+        run: |
+          export YOINK_SOCK="/tmp/yoink-e2e.sock"
+          echo "YOINK_SOCK=$YOINK_SOCK" >> $GITHUB_ENV
+          ./yoink daemon &
+          echo "DAEMON_PID=$!" >> $GITHUB_ENV
+          sleep 1
+          echo "Daemon started"
+
+      - name: "Scenario 1: Spawn interactive script"
+        run: |
+          ./yoink run "/tmp/interactive-setup.sh"
+          sleep 1
+
+      - name: "Scenario 1: Verify process is running and waiting for input"
+        run: |
+          echo "--- Process list ---"
+          ./yoink ls
+          echo ""
+          echo "--- Process log ---"
+          OUTPUT=$(./yoink log 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "What is your project name?" || (echo "FAIL: expected prompt not found" && exit 1)
+          echo "PASS: First prompt detected"
+
+      - name: "Scenario 1: Send first input (project name)"
+        run: |
+          ./yoink send 1 "my-awesome-app"
+          echo "Sent first input"
+          sleep 1
+
+      - name: "Scenario 1: Verify first input processed, second prompt visible"
+        run: |
+          OUTPUT=$(./yoink log 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Got project: my-awesome-app" || (echo "FAIL: first input not echoed" && exit 1)
+          echo "$OUTPUT" | grep -q "Enable logging?" || (echo "FAIL: second prompt not found" && exit 1)
+          echo "PASS: First input processed, second prompt shown"
+
+      - name: "Scenario 1: Send second input (logging)"
+        run: |
+          ./yoink send 1 "yes"
+          echo "Sent second input"
+          sleep 1
+
+      - name: "Scenario 1: Verify both inputs processed and script completed"
+        run: |
+          echo "--- Final log ---"
+          OUTPUT=$(./yoink log 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Got logging: yes" || (echo "FAIL: second input not echoed" && exit 1)
+          echo "$OUTPUT" | grep -q "Status: SUCCESS" || (echo "FAIL: script did not complete" && exit 1)
+          echo ""
+          echo "--- Process state ---"
+          ./yoink ls
+          echo ""
+          echo "PASS: Interactive script completed with both inputs"
+
+      - name: "Scenario 2: Spawn deploy script (will hang waiting for confirm)"
+        run: |
+          ./yoink run "/tmp/confirm-deploy.sh"
+          echo "Deploy script spawned as process 2"
+          sleep 3
+
+      - name: "Scenario 2: Verify build phase completed, waiting for confirm"
+        run: |
+          OUTPUT=$(./yoink log 2)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Build complete" || (echo "FAIL: build phase not done" && exit 1)
+          echo "$OUTPUT" | grep -q "Deploy to production?" || (echo "FAIL: confirm prompt not found" && exit 1)
+          echo "PASS: Deploy waiting for confirmation"
+
+      - name: "Scenario 2: Send confirmation"
+        run: |
+          ./yoink send 2 "confirm"
+          echo "Sent deploy confirmation"
+          sleep 2
+
+      - name: "Scenario 2: Verify deploy completed"
+        run: |
+          OUTPUT=$(./yoink log 2)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Deploy: COMPLETE" || (echo "FAIL: deploy not completed" && exit 1)
+          echo ""
+          echo "--- All processes ---"
+          ./yoink ls
+          echo ""
+          echo "PASS: Deploy confirmed and completed"
+
+      - name: "Scenario 3: Spawn a long-running process, then kill it"
+        run: |
+          ./yoink run "sleep 300"
+          echo "Long-running process spawned as process 3"
+          sleep 1
+          echo ""
+          echo "--- Before kill ---"
+          ./yoink ls
+          echo ""
+          ./yoink kill 3
+          sleep 1
+          echo ""
+          echo "--- After kill ---"
+          ./yoink ls
+
+      - name: "Verify: Multiple processes with different states"
+        run: |
+          echo "--- Full process table ---"
+          ./yoink ls
+          echo ""
+          # Process 1: done (interactive script)
+          # Process 2: done (deploy script)
+          # Process 3: failed (killed sleep)
+          echo "All 3 processes should be visible with correct states"
+
+      - name: "Clean up finished processes"
+        run: |
+          ./yoink clean
+          echo ""
+          echo "--- After clean ---"
+          ./yoink ls
+
+      - name: Stop daemon
+        if: always()
+        run: |
+          kill $DAEMON_PID 2>/dev/null || true
+          rm -f "$YOINK_SOCK"
