@@ -297,6 +297,66 @@ func TestProcessManager_SendRedacted(t *testing.T) {
 	}
 }
 
+func TestProcessManager_GetNewOutput(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Use a script that produces distinct reply lines so we can wait for exact output
+	id, err := pm.Spawn("sh -c 'while read line; do echo reply-$line; done'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	pm.SendInput(id, "first", false)
+	waitForOutput(t, pm, id, "reply-first", 5*time.Second)
+	// Let PTY echo settle
+	time.Sleep(200 * time.Millisecond)
+
+	// First --new call: returns everything so far
+	output, err := pm.GetNewOutput(id)
+	if err != nil {
+		t.Fatalf("GetNewOutput failed: %v", err)
+	}
+	if !strings.Contains(output, "reply-first") {
+		t.Errorf("expected 'reply-first' in output, got: %q", output)
+	}
+
+	// Second --new call: no new output
+	output, err = pm.GetNewOutput(id)
+	if err != nil {
+		t.Fatalf("GetNewOutput failed: %v", err)
+	}
+	if output != "" {
+		t.Errorf("expected empty output, got: %q", output)
+	}
+
+	// Write more
+	pm.SendInput(id, "second", false)
+	waitForOutput(t, pm, id, "reply-second", 5*time.Second)
+	time.Sleep(200 * time.Millisecond)
+
+	// Third --new call: only new lines
+	output, err = pm.GetNewOutput(id)
+	if err != nil {
+		t.Fatalf("GetNewOutput failed: %v", err)
+	}
+	if !strings.Contains(output, "reply-second") {
+		t.Errorf("expected 'reply-second' in output, got: %q", output)
+	}
+	if strings.Contains(output, "reply-first") {
+		t.Errorf("did not expect 'reply-first' in new output, got: %q", output)
+	}
+}
+
+func TestProcessManager_GetNewOutput_NotFound(t *testing.T) {
+	pm := NewProcessManager(100)
+	_, err := pm.GetNewOutput(999)
+	if err == nil {
+		t.Error("expected error for non-existent process")
+	}
+}
+
 func TestProcessManager_SpawnWithAlias(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()

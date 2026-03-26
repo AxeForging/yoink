@@ -29,6 +29,9 @@ yoink ls
 yoink log 1
 yoink log deploy --lines 100
 
+# Show only new lines since last --new call
+yoink log deploy --new
+
 # Send input to a process waiting for confirmation
 yoink send deploy "y"
 
@@ -52,7 +55,7 @@ yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open f
 
 - **run**: Spawns the command under a PTY in the daemon, returns an ID. Use `--alias` to name it
 - **ls**: Lists all processes with state (running/done/failed), PID, exit code
-- **log**: Shows buffered output (last 1000 lines kept per process)
+- **log**: Shows buffered output (last 1000 lines kept per process). Use `--new` to see only lines since the last `--new` call
 - **send**: Writes text to the process stdin (fire-and-forget)
 - **send-redacted**: Same as send, but input is masked in logs
 - **attach**: Bridges your terminal to the process PTY for full interactive control

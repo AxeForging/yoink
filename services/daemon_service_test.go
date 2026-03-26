@@ -221,6 +221,76 @@ func TestDaemon_Clean(t *testing.T) {
 	}
 }
 
+func TestDaemon_LogNew(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "cat",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqSend,
+		ID:    1,
+		Input: "line-one",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// First --new: should contain line-one
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type: domain.ReqLog,
+		ID:   1,
+		New:  true,
+	})
+	if !resp.Success {
+		t.Fatalf("log --new failed: %s", resp.Error)
+	}
+	if !strings.Contains(resp.Output, "line-one") {
+		t.Errorf("expected 'line-one' in output, got: %q", resp.Output)
+	}
+
+	// Second --new: nothing new
+	resp = sendRequest(t, sockPath, domain.DaemonRequest{
+		Type: domain.ReqLog,
+		ID:   1,
+		New:  true,
+	})
+	if !resp.Success {
+		t.Fatalf("log --new failed: %s", resp.Error)
+	}
+	if resp.Output != "" {
+		t.Errorf("expected empty output on second --new, got: %q", resp.Output)
+	}
+
+	// Send more input
+	sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqSend,
+		ID:    1,
+		Input: "line-two",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Third --new: only new lines
+	resp = sendRequest(t, sockPath, domain.DaemonRequest{
+		Type: domain.ReqLog,
+		ID:   1,
+		New:  true,
+	})
+	if !resp.Success {
+		t.Fatalf("log --new failed: %s", resp.Error)
+	}
+	if !strings.Contains(resp.Output, "line-two") {
+		t.Errorf("expected 'line-two' in output, got: %q", resp.Output)
+	}
+	if strings.Contains(resp.Output, "line-one") {
+		t.Errorf("did not expect 'line-one' in new output, got: %q", resp.Output)
+	}
+}
+
 func TestDaemon_LogNotFound(t *testing.T) {
 	_, sockPath := startTestDaemon(t)
 

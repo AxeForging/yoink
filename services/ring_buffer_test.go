@@ -151,6 +151,93 @@ func TestRingBuffer_MixedSources(t *testing.T) {
 	}
 }
 
+func TestRingBuffer_ReadAfter(t *testing.T) {
+	rb := NewRingBuffer(10)
+	rb.Write(outEntry("a"))
+	rb.Write(outEntry("b"))
+	rb.Write(outEntry("c"))
+
+	// Read from beginning
+	entries, cursor := rb.ReadAfter(0)
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d", len(entries))
+	}
+	if entries[0].Text != "a" || entries[2].Text != "c" {
+		t.Errorf("unexpected entries: %v", entries)
+	}
+	if cursor != 3 {
+		t.Errorf("expected cursor 3, got %d", cursor)
+	}
+
+	// Read again — nothing new
+	entries, cursor = rb.ReadAfter(cursor)
+	if entries != nil {
+		t.Errorf("expected nil entries, got %v", entries)
+	}
+	if cursor != 3 {
+		t.Errorf("expected cursor 3, got %d", cursor)
+	}
+
+	// Write more, then read new
+	rb.Write(outEntry("d"))
+	rb.Write(outEntry("e"))
+
+	entries, cursor = rb.ReadAfter(3)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+	if entries[0].Text != "d" || entries[1].Text != "e" {
+		t.Errorf("expected [d e], got %v", entries)
+	}
+	if cursor != 5 {
+		t.Errorf("expected cursor 5, got %d", cursor)
+	}
+}
+
+func TestRingBuffer_ReadAfter_Overflow(t *testing.T) {
+	rb := NewRingBuffer(3)
+	// Write 5 entries into a buffer of size 3
+	for i := 0; i < 5; i++ {
+		rb.Write(outEntry(fmt.Sprintf("line%d", i)))
+	}
+
+	// Cursor 0 is behind the buffer — should get all buffered entries
+	entries, cursor := rb.ReadAfter(0)
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries (buffer cap), got %d", len(entries))
+	}
+	if entries[0].Text != "line2" || entries[1].Text != "line3" || entries[2].Text != "line4" {
+		t.Errorf("expected [line2 line3 line4], got %v", entries)
+	}
+	if cursor != 5 {
+		t.Errorf("expected cursor 5, got %d", cursor)
+	}
+}
+
+func TestRingBuffer_ReadAfter_Empty(t *testing.T) {
+	rb := NewRingBuffer(5)
+	entries, cursor := rb.ReadAfter(0)
+	if entries != nil {
+		t.Errorf("expected nil entries, got %v", entries)
+	}
+	if cursor != 0 {
+		t.Errorf("expected cursor 0, got %d", cursor)
+	}
+}
+
+func TestRingBuffer_TotalWritten(t *testing.T) {
+	rb := NewRingBuffer(3)
+	if rb.TotalWritten() != 0 {
+		t.Errorf("expected 0, got %d", rb.TotalWritten())
+	}
+	for i := 0; i < 10; i++ {
+		rb.Write(outEntry(fmt.Sprintf("%d", i)))
+	}
+	if rb.TotalWritten() != 10 {
+		t.Errorf("expected 10, got %d", rb.TotalWritten())
+	}
+}
+
 func TestRingBuffer_Concurrent(t *testing.T) {
 	rb := NewRingBuffer(100)
 	var wg sync.WaitGroup

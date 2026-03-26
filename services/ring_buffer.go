@@ -8,11 +8,12 @@ import (
 
 // RingBuffer is a thread-safe circular buffer for storing log entries.
 type RingBuffer struct {
-	entries []domain.LogEntry
-	size    int
-	head    int
-	count   int
-	mu      sync.RWMutex
+	entries      []domain.LogEntry
+	size         int
+	head         int
+	count        int
+	totalWritten int
+	mu           sync.RWMutex
 }
 
 // NewRingBuffer creates a ring buffer with the given capacity.
@@ -35,6 +36,7 @@ func (rb *RingBuffer) Write(entry domain.LogEntry) {
 	if rb.count < rb.size {
 		rb.count++
 	}
+	rb.totalWritten++
 }
 
 // ReadLast returns the last n entries in chronological order.
@@ -61,6 +63,33 @@ func (rb *RingBuffer) ReadAll() []domain.LogEntry {
 	count := rb.count
 	rb.mu.RUnlock()
 	return rb.ReadLast(count)
+}
+
+// ReadAfter returns entries written after the given cursor and the new cursor.
+// If the cursor is behind the buffer (entries were overwritten), all buffered entries are returned.
+func (rb *RingBuffer) ReadAfter(cursor int) ([]domain.LogEntry, int) {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+	if cursor >= rb.totalWritten {
+		return nil, rb.totalWritten
+	}
+	n := rb.totalWritten - cursor
+	if n > rb.count {
+		n = rb.count
+	}
+	result := make([]domain.LogEntry, n)
+	start := (rb.head - n + rb.size) % rb.size
+	for i := 0; i < n; i++ {
+		result[i] = rb.entries[(start+i)%rb.size]
+	}
+	return result, rb.totalWritten
+}
+
+// TotalWritten returns the total number of entries ever written to the buffer.
+func (rb *RingBuffer) TotalWritten() int {
+	rb.mu.RLock()
+	defer rb.mu.RUnlock()
+	return rb.totalWritten
 }
 
 // Count returns the number of entries currently in the buffer.

@@ -23,6 +23,8 @@ type managedProcess struct {
 
 	redactMu       sync.Mutex
 	redactPatterns []string // patterns to redact from stdout (from send-redacted echo)
+
+	logCursor int // tracks position for --new log reads
 }
 
 // ProcessManager manages background processes with PTY I/O.
@@ -201,6 +203,19 @@ func (pm *ProcessManager) GetOutput(id, lines int) (string, error) {
 		return "", fmt.Errorf("process %d not found", id)
 	}
 	entries := mp.buffer.ReadLast(lines)
+	return FormatLogEntries(entries), nil
+}
+
+// GetNewOutput returns only the lines written since the last call and advances the cursor.
+func (pm *ProcessManager) GetNewOutput(id int) (string, error) {
+	pm.mu.RLock()
+	mp, ok := pm.processes[id]
+	pm.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("process %d not found", id)
+	}
+	entries, newCursor := mp.buffer.ReadAfter(mp.logCursor)
+	mp.logCursor = newCursor
 	return FormatLogEntries(entries), nil
 }
 

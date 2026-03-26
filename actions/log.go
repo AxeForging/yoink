@@ -21,22 +21,28 @@ func NewLogAction(client *services.ClientService) *LogAction {
 // Execute prints the last N lines of output for the given process.
 func (a *LogAction) Execute(c *cli.Context) error {
 	if c.NArg() < 1 {
-		return fmt.Errorf("usage: yoink log <id|alias> [--lines N]")
+		return fmt.Errorf("usage: yoink log <id|alias> [--lines N] [--new]")
 	}
 
 	id, alias := parseProcessRef(c.Args().First())
 
-	lines := c.Int("lines")
-	if lines <= 0 {
-		lines = 50
-	}
-
-	resp, err := a.client.Do(domain.DaemonRequest{
+	req := domain.DaemonRequest{
 		Type:  domain.ReqLog,
 		ID:    id,
 		Alias: alias,
-		Lines: lines,
-	})
+	}
+
+	if c.Bool("new") {
+		req.New = true
+	} else {
+		lines := c.Int("lines")
+		if lines <= 0 {
+			lines = 50
+		}
+		req.Lines = lines
+	}
+
+	resp, err := a.client.Do(req)
 	if err != nil {
 		return err
 	}

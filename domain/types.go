@@ -60,6 +60,7 @@ type DaemonRequest struct {
 	Command  string      `json:"command,omitempty"`
 	Input    string      `json:"input,omitempty"`
 	Lines    int         `json:"lines,omitempty"`
+	New      bool        `json:"new,omitempty"`
 	Force    bool        `json:"force,omitempty"`
 	Redacted bool        `json:"redacted,omitempty"`
 }
