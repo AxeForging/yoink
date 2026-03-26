@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.25"
           cache: true
 
       - name: Build yoink
@@ -118,10 +118,14 @@ jobs:
           echo "$OUTPUT" | grep -q "Got logging: yes" || (echo "FAIL: second input not echoed" && exit 1)
           echo "$OUTPUT" | grep -q "Status: SUCCESS" || (echo "FAIL: script did not complete" && exit 1)
           echo ""
+          echo "--- Verify labeled output ---"
+          echo "$OUTPUT" | grep -q "\[out\]" || (echo "FAIL: expected [out] labels" && exit 1)
+          echo "$OUTPUT" | grep -q "\[in\]" || (echo "FAIL: expected [in] labels" && exit 1)
+          echo ""
           echo "--- Process state ---"
           ./yoink ls
           echo ""
-          echo "PASS: Interactive script completed with both inputs"
+          echo "PASS: Interactive script completed with both inputs and labeled output"
 
       - name: "Scenario 2: Spawn deploy script (will hang waiting for confirm)"
         run: |
@@ -178,6 +182,44 @@ jobs:
           # Process 2: done (deploy script)
           # Process 3: failed (killed sleep)
           echo "All 3 processes should be visible with correct states"
+
+      - name: "Scenario 4: Send redacted input (password scenario)"
+        run: |
+          cat > /tmp/password-prompt.sh << 'SCRIPT'
+          #!/bin/bash
+          echo "Enter API token:"
+          read -r TOKEN
+          echo "Token received, length: ${#TOKEN}"
+          echo "Authenticating..."
+          echo "Auth: SUCCESS"
+          SCRIPT
+          chmod +x /tmp/password-prompt.sh
+
+          ./yoink run "/tmp/password-prompt.sh"
+          echo "Password prompt spawned as process 4"
+          sleep 1
+
+      - name: "Scenario 4: Send redacted token"
+        run: |
+          OUTPUT=$(./yoink log 4)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Enter API token" || (echo "FAIL: token prompt not found" && exit 1)
+          echo ""
+          ./yoink send-redacted 4 "sk-super-secret-token-12345"
+          echo "Sent redacted token"
+          sleep 1
+
+      - name: "Scenario 4: Verify token is redacted in logs"
+        run: |
+          OUTPUT=$(./yoink log 4)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Auth: SUCCESS" || (echo "FAIL: auth did not succeed" && exit 1)
+          echo "$OUTPUT" | grep -q "\*\*\*\*\*\*\*\*" || (echo "FAIL: expected redacted marker" && exit 1)
+          if echo "$OUTPUT" | grep -q "sk-super-secret"; then
+            echo "FAIL: secret token visible in logs!"
+            exit 1
+          fi
+          echo "PASS: Token was sent but redacted in logs"
 
       - name: "Clean up finished processes"
         run: |
