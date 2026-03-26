@@ -19,6 +19,9 @@ type managedProcess struct {
 
 	attachMu  sync.Mutex
 	attachOut io.Writer
+
+	redactMu       sync.Mutex
+	redactPatterns []string // patterns to redact from stdout (from send-redacted echo)
 }
 
 // ProcessManager manages background processes with PTY I/O.
@@ -99,12 +102,28 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 				}
 				line := strings.TrimRight(partial[:idx], "\r")
 				partial = partial[idx+1:]
-				mp.buffer.Write(line)
+
+				// Check if this line contains any redacted input (PTY echo or process output)
+				redacted := false
+				mp.redactMu.Lock()
+				for _, pattern := range mp.redactPatterns {
+					if strings.Contains(line, pattern) {
+						redacted = true
+						break
+					}
+				}
+				mp.redactMu.Unlock()
+
+				if redacted {
+					mp.buffer.Write(domain.LogEntry{Source: domain.SourceStdout, Text: line, Redacted: true})
+				} else {
+					mp.buffer.Write(domain.LogEntry{Source: domain.SourceStdout, Text: line})
+				}
 			}
 		}
 		if err != nil {
 			if partial != "" {
-				mp.buffer.Write(strings.TrimRight(partial, "\r"))
+				mp.buffer.Write(domain.LogEntry{Source: domain.SourceStdout, Text: strings.TrimRight(partial, "\r")})
 			}
 			break
 		}
@@ -144,7 +163,7 @@ func (pm *ProcessManager) List() []domain.ProcessInfo {
 	return list
 }
 
-// GetOutput returns the last n lines of output for the given process.
+// GetOutput returns the last n lines of formatted output for the given process.
 func (pm *ProcessManager) GetOutput(id, lines int) (string, error) {
 	pm.mu.RLock()
 	mp, ok := pm.processes[id]
@@ -152,12 +171,24 @@ func (pm *ProcessManager) GetOutput(id, lines int) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("process %d not found", id)
 	}
-	result := mp.buffer.ReadLast(lines)
-	return strings.Join(result, "\n"), nil
+	entries := mp.buffer.ReadLast(lines)
+	return FormatLogEntries(entries), nil
+}
+
+// GetLogEntries returns the last n raw log entries for the given process.
+func (pm *ProcessManager) GetLogEntries(id, lines int) ([]domain.LogEntry, error) {
+	pm.mu.RLock()
+	mp, ok := pm.processes[id]
+	pm.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("process %d not found", id)
+	}
+	return mp.buffer.ReadLast(lines), nil
 }
 
 // SendInput writes text followed by a newline to the process PTY.
-func (pm *ProcessManager) SendInput(id int, input string) error {
+// If redacted is true, the input is logged as [REDACTED] in the ring buffer.
+func (pm *ProcessManager) SendInput(id int, input string, redacted bool) error {
 	pm.mu.RLock()
 	mp, ok := pm.processes[id]
 	pm.mu.RUnlock()
@@ -167,8 +198,39 @@ func (pm *ProcessManager) SendInput(id int, input string) error {
 	if mp.info.State != domain.StateRunning {
 		return fmt.Errorf("process %d is not running", id)
 	}
+
+	// If redacted, register pattern to catch PTY echo
+	if redacted {
+		mp.redactMu.Lock()
+		mp.redactPatterns = append(mp.redactPatterns, input)
+		mp.redactMu.Unlock()
+	}
+
+	// Log the input in the ring buffer
+	mp.buffer.Write(domain.LogEntry{
+		Source:   domain.SourceStdin,
+		Text:     input,
+		Redacted: redacted,
+	})
+
 	_, err := mp.pty.Write([]byte(input + "\n"))
 	return err
+}
+
+// FormatLogEntries formats log entries with source labels and redaction.
+func FormatLogEntries(entries []domain.LogEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	lines := make([]string, len(entries))
+	for i, e := range entries {
+		text := e.Text
+		if e.Redacted {
+			text = "********"
+		}
+		lines[i] = fmt.Sprintf("[%s] %s", e.Source, text)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Kill sends a signal to the process. Use force=true for SIGKILL.

@@ -34,7 +34,8 @@ func main() {
 	runAction := actions.NewRunAction(client)
 	lsAction := actions.NewLsAction(client)
 	logAction := actions.NewLogAction(client)
-	sendAction := actions.NewSendAction(client)
+	sendAction := actions.NewSendAction(client, false)
+	sendRedactedAction := actions.NewSendAction(client, true)
 	attachAction := actions.NewAttachAction(client)
 	killAction := actions.NewKillAction(client)
 	cleanAction := actions.NewCleanAction(client)
@@ -82,6 +83,11 @@ func main() {
 			Aliases: []string{"s"},
 			Usage:   "Send input text to a running process",
 			Action:  sendAction.Execute,
+		},
+		{
+			Name:  "send-redacted",
+			Usage: "Send input to a process (redacted in logs)",
+			Action: sendRedactedAction.Execute,
 		},
 		{
 			Name:    "attach",

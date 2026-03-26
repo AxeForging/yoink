@@ -12,18 +12,23 @@ import (
 
 // SendAction sends input text to a running process.
 type SendAction struct {
-	client *services.ClientService
+	client   *services.ClientService
+	redacted bool
 }
 
 // NewSendAction creates a SendAction.
-func NewSendAction(client *services.ClientService) *SendAction {
-	return &SendAction{client: client}
+func NewSendAction(client *services.ClientService, redacted bool) *SendAction {
+	return &SendAction{client: client, redacted: redacted}
 }
 
 // Execute sends the given text as stdin to the process.
 func (a *SendAction) Execute(c *cli.Context) error {
 	if c.NArg() < 2 {
-		return fmt.Errorf("usage: yoink send <id> <input>")
+		cmd := "send"
+		if a.redacted {
+			cmd = "send-redacted"
+		}
+		return fmt.Errorf("usage: yoink %s <id> <input>", cmd)
 	}
 
 	id, err := strconv.Atoi(c.Args().First())
@@ -34,9 +39,10 @@ func (a *SendAction) Execute(c *cli.Context) error {
 	input := strings.Join(c.Args()[1:], " ")
 
 	resp, err := a.client.Do(domain.DaemonRequest{
-		Type:  domain.ReqSend,
-		ID:    id,
-		Input: input,
+		Type:     domain.ReqSend,
+		ID:       id,
+		Input:    input,
+		Redacted: a.redacted,
 	})
 	if err != nil {
 		return err
@@ -45,6 +51,10 @@ func (a *SendAction) Execute(c *cli.Context) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	fmt.Printf("Sent to process %d: %s\n", id, input)
+	if a.redacted {
+		fmt.Printf("Sent redacted input to process %d\n", id)
+	} else {
+		fmt.Printf("Sent to process %d: %s\n", id, input)
+	}
 	return nil
 }

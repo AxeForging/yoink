@@ -22,6 +22,21 @@ type ProcessInfo struct {
 	FinishedAt *time.Time   `json:"finished_at,omitempty"`
 }
 
+// LineSource identifies where a log line came from.
+type LineSource string
+
+const (
+	SourceStdout LineSource = "out"
+	SourceStdin  LineSource = "in"
+)
+
+// LogEntry is a single line in the process output buffer.
+type LogEntry struct {
+	Source   LineSource `json:"source"`
+	Text     string     `json:"text"`
+	Redacted bool       `json:"redacted,omitempty"`
+}
+
 // RequestType identifies the kind of daemon request.
 type RequestType string
 
@@ -38,12 +53,13 @@ const (
 
 // DaemonRequest is sent from client to daemon over the Unix socket.
 type DaemonRequest struct {
-	Type    RequestType `json:"type"`
-	ID      int         `json:"id,omitempty"`
-	Command string      `json:"command,omitempty"`
-	Input   string      `json:"input,omitempty"`
-	Lines   int         `json:"lines,omitempty"`
-	Force   bool        `json:"force,omitempty"`
+	Type     RequestType `json:"type"`
+	ID       int         `json:"id,omitempty"`
+	Command  string      `json:"command,omitempty"`
+	Input    string      `json:"input,omitempty"`
+	Lines    int         `json:"lines,omitempty"`
+	Force    bool        `json:"force,omitempty"`
+	Redacted bool        `json:"redacted,omitempty"`
 }
 
 // DaemonResponse is sent from daemon to client over the Unix socket.

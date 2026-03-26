@@ -14,9 +14,11 @@ func waitForOutput(t *testing.T, pm *ProcessManager, id int, expected string, ti
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		output, _ := pm.GetOutput(id, 1000)
-		if strings.Contains(output, expected) {
-			return
+		entries, _ := pm.GetLogEntries(id, 1000)
+		for _, e := range entries {
+			if strings.Contains(e.Text, expected) {
+				return
+			}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -77,7 +79,7 @@ func TestProcessManager_SpawnAndSendInput(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond) // let cat start
 
-	if err := pm.SendInput(id, "test-input-123"); err != nil {
+	if err := pm.SendInput(id, "test-input-123", false); err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 
@@ -197,7 +199,7 @@ func TestProcessManager_SendInput_NotRunning(t *testing.T) {
 	id, _ := pm.Spawn("echo fast")
 	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
 
-	err := pm.SendInput(id, "too late")
+	err := pm.SendInput(id, "too late", false)
 	if err == nil {
 		t.Error("expected error sending to finished process")
 	}
@@ -229,5 +231,68 @@ func TestProcessManager_MultilineOutput(t *testing.T) {
 
 	if !strings.Contains(output, "line1") || !strings.Contains(output, "line3") {
 		t.Errorf("expected multiline output, got: %q", output)
+	}
+}
+
+func TestProcessManager_LabeledOutput(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	pm.SendInput(id, "hello", false)
+	time.Sleep(500 * time.Millisecond)
+
+	output, _ := pm.GetOutput(id, 100)
+	if !strings.Contains(output, "[in] hello") {
+		t.Errorf("expected labeled stdin in output, got: %q", output)
+	}
+	if !strings.Contains(output, "[out]") {
+		t.Errorf("expected labeled stdout in output, got: %q", output)
+	}
+}
+
+func TestProcessManager_SendRedacted(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	pm.SendInput(id, "super-secret-token", true)
+	time.Sleep(500 * time.Millisecond)
+
+	// Formatted output should show redacted
+	output, _ := pm.GetOutput(id, 100)
+	if strings.Contains(output, "super-secret-token") {
+		t.Errorf("redacted input should NOT appear in formatted output, got: %q", output)
+	}
+	if !strings.Contains(output, "********") {
+		t.Errorf("expected '********' for redacted input in output, got: %q", output)
+	}
+	if !strings.Contains(output, "[in] ********") {
+		t.Errorf("expected '[in] ********' for redacted input, got: %q", output)
+	}
+
+	// Raw entries should still have the text (for daemon internal use) but marked redacted
+	entries, _ := pm.GetLogEntries(id, 100)
+	found := false
+	for _, e := range entries {
+		if e.Redacted && e.Source == domain.SourceStdin {
+			found = true
+			if e.Text != "super-secret-token" {
+				t.Errorf("raw entry text should contain actual input, got: %q", e.Text)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected to find a redacted stdin entry")
 	}
 }

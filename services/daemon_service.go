@@ -141,7 +141,7 @@ func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 
 func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	if err := ds.pm.SendInput(req.ID, req.Input); err != nil {
+	if err := ds.pm.SendInput(req.ID, req.Input, req.Redacted); err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}

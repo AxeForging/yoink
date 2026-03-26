@@ -1,39 +1,58 @@
-version: "1"
+# Directory structure rules
+dir_structure:
+  allowedPaths:
+    - "."
+    - "actions/**"
+    - "domain/**"
+    - "services/**"
+    - "helpers/**"
+    - "integration/**"
+    - "docs/**"
+    - ".github/**"
+    - ".claude/**"
+  disallowedPaths:
+    - "vendor/**"
+    - "node_modules/**"
+    - "dist/**"
+  requiredPaths:
+    - "actions"
+    - "domain"
+    - "services"
+    - "helpers"
+    - "docs"
 
-rules:
-  allowed_paths:
-    - actions
-    - domain
-    - services
-    - helpers
-    - integration
-    - docs
-    - dist
-    - .github
-    - .claude
-
-  disallowed_paths:
-    - vendor
-    - node_modules
-    - .git
-
-  required_paths:
-    - actions
-    - domain
-    - services
-    - helpers
-    - docs
-
-  required_files:
-    - go.mod
-    - README.md
-    - .gitignore
-    - main.go
-
-  forbidden_patterns:
+# File naming rules
+file_naming_pattern:
+  allowed:
+    - "*.go"
+    - "*.mod"
+    - "*.sum"
+    - "*.yaml"
+    - "*.yml"
+    - "*.json"
+    - "*.md"
+    - "*.txt"
+    - "Makefile"
+    - ".gitignore"
+    - ".goreleaser.yml"
+    - "LICENSE"
+  disallowed:
     - "*.env*"
     - "*.key"
     - "*.pem"
     - "*.log"
     - "*.tmp"
     - "*~"
+  required:
+    - "go.mod"
+    - "README.md"
+    - ".gitignore"
+    - "main.go"
+
+# Paths to completely skip during validation
+ignore:
+  - ".git"
+  - "vendor"
+  - "node_modules"
+  - "bin"
+  - "dist"
