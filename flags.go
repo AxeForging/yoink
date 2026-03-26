@@ -17,3 +17,8 @@ var forceFlag = cli.BoolFlag{
 	Name:  "force, f",
 	Usage: "Send SIGKILL instead of SIGTERM",
 }
+
+var aliasFlag = cli.StringFlag{
+	Name:  "alias",
+	Usage: "Assign an alias to the process for easier reference",
+}

@@ -2,7 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/AxeForging/yoink/domain"
@@ -28,19 +27,16 @@ func (a *SendAction) Execute(c *cli.Context) error {
 		if a.redacted {
 			cmd = "send-redacted"
 		}
-		return fmt.Errorf("usage: yoink %s <id> <input>", cmd)
+		return fmt.Errorf("usage: yoink %s <id|alias> <input>", cmd)
 	}
 
-	id, err := strconv.Atoi(c.Args().First())
-	if err != nil {
-		return fmt.Errorf("invalid process ID: %s", c.Args().First())
-	}
-
+	id, alias := parseProcessRef(c.Args().First())
 	input := strings.Join(c.Args()[1:], " ")
 
 	resp, err := a.client.Do(domain.DaemonRequest{
 		Type:     domain.ReqSend,
 		ID:       id,
+		Alias:    alias,
 		Input:    input,
 		Redacted: a.redacted,
 	})

@@ -19,24 +19,27 @@ tar xzf yoink.tar.gz && sudo mv yoink /usr/local/bin/
 # Spawn a command in the background
 yoink run "make deploy-staging"
 
+# Spawn with an alias for easier reference
+yoink run --alias deploy "make deploy-staging"
+
 # List all managed processes
 yoink ls
 
-# Check output of a process
+# Check output of a process (by ID or alias)
 yoink log 1
-yoink log 1 --lines 100
+yoink log deploy --lines 100
 
 # Send input to a process waiting for confirmation
-yoink send 1 "y"
+yoink send deploy "y"
 
 # Send sensitive input (passwords, tokens) — hidden from logs
-yoink send-redacted 1 "my-secret-token"
+yoink send-redacted deploy "my-secret-token"
 
 # Full interactive reattach (Ctrl+] to detach)
-yoink attach 1
+yoink attach deploy
 
 # Kill a process
-yoink kill 1
+yoink kill deploy
 yoink kill 1 --force    # SIGKILL
 
 # Remove finished processes
@@ -47,7 +50,7 @@ yoink clean
 
 yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open for each background process. The CLI client communicates with the daemon over a Unix socket.
 
-- **run**: Spawns the command under a PTY in the daemon, returns an ID
+- **run**: Spawns the command under a PTY in the daemon, returns an ID. Use `--alias` to name it
 - **ls**: Lists all processes with state (running/done/failed), PID, exit code
 - **log**: Shows buffered output (last 1000 lines kept per process)
 - **send**: Writes text to the process stdin (fire-and-forget)
