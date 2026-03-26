@@ -1,0 +1,9 @@
+yoink
+dist/
+*.exe
+*.log
+*.tmp
+*.env
+*.key
+*.pem
+.DS_Store

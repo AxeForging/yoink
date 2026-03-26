@@ -1,0 +1,39 @@
+version: "1"
+
+rules:
+  allowed_paths:
+    - actions
+    - domain
+    - services
+    - helpers
+    - integration
+    - docs
+    - dist
+    - .github
+    - .claude
+
+  disallowed_paths:
+    - vendor
+    - node_modules
+    - .git
+
+  required_paths:
+    - actions
+    - domain
+    - services
+    - helpers
+    - docs
+
+  required_files:
+    - go.mod
+    - README.md
+    - .gitignore
+    - main.go
+
+  forbidden_patterns:
+    - "*.env*"
+    - "*.key"
+    - "*.pem"
+    - "*.log"
+    - "*.tmp"
+    - "*~"

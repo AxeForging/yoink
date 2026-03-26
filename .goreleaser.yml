@@ -1,0 +1,72 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - arm
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.BuildTime={{.Date}}
+      - -X main.GitCommit={{.FullCommit}}
+    ignore:
+      - goos: windows
+        goarch: arm
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "yoink-{{ .Os }}-{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: AxeForging
+    name: yoink
+  draft: false
+  prerelease: auto
+  header: |
+    ## Installation
+
+    ```bash
+    # Linux (amd64)
+    curl -Lo yoink https://github.com/AxeForging/yoink/releases/download/v{{.Version}}/yoink-linux-amd64.tar.gz
+    tar xzf yoink-linux-amd64.tar.gz
+    chmod +x yoink && sudo mv yoink /usr/local/bin/
+
+    # macOS (Apple Silicon)
+    curl -Lo yoink https://github.com/AxeForging/yoink/releases/download/v{{.Version}}/yoink-darwin-arm64.tar.gz
+    tar xzf yoink-darwin-arm64.tar.gz
+    chmod +x yoink && sudo mv yoink /usr/local/bin/
+    ```

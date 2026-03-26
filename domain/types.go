@@ -1,0 +1,57 @@
+package domain
+
+import "time"
+
+// ProcessState represents the current state of a managed process.
+type ProcessState string
+
+const (
+	StateRunning ProcessState = "running"
+	StateDone    ProcessState = "done"
+	StateFailed  ProcessState = "failed"
+)
+
+// ProcessInfo holds metadata about a managed background process.
+type ProcessInfo struct {
+	ID         int          `json:"id"`
+	Command    string       `json:"command"`
+	State      ProcessState `json:"state"`
+	PID        int          `json:"pid"`
+	ExitCode   int          `json:"exit_code"`
+	StartedAt  time.Time    `json:"started_at"`
+	FinishedAt *time.Time   `json:"finished_at,omitempty"`
+}
+
+// RequestType identifies the kind of daemon request.
+type RequestType string
+
+const (
+	ReqRun      RequestType = "run"
+	ReqList     RequestType = "list"
+	ReqLog      RequestType = "log"
+	ReqSend     RequestType = "send"
+	ReqAttach   RequestType = "attach"
+	ReqKill     RequestType = "kill"
+	ReqClean    RequestType = "clean"
+	ReqShutdown RequestType = "shutdown"
+)
+
+// DaemonRequest is sent from client to daemon over the Unix socket.
+type DaemonRequest struct {
+	Type    RequestType `json:"type"`
+	ID      int         `json:"id,omitempty"`
+	Command string      `json:"command,omitempty"`
+	Input   string      `json:"input,omitempty"`
+	Lines   int         `json:"lines,omitempty"`
+	Force   bool        `json:"force,omitempty"`
+}
+
+// DaemonResponse is sent from daemon to client over the Unix socket.
+type DaemonResponse struct {
+	Success   bool          `json:"success"`
+	Error     string        `json:"error,omitempty"`
+	ID        int           `json:"id,omitempty"`
+	Processes []ProcessInfo `json:"processes,omitempty"`
+	Output    string        `json:"output,omitempty"`
+	Cleaned   int           `json:"cleaned,omitempty"`
+}

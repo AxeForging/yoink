@@ -1,0 +1,19 @@
+package main
+
+import "github.com/urfave/cli"
+
+var verboseFlag = cli.BoolFlag{
+	Name:  "verbose",
+	Usage: "Enable verbose logging",
+}
+
+var linesFlag = cli.IntFlag{
+	Name:  "lines, n",
+	Value: 50,
+	Usage: "Number of output lines to show",
+}
+
+var forceFlag = cli.BoolFlag{
+	Name:  "force, f",
+	Usage: "Send SIGKILL instead of SIGTERM",
+}
