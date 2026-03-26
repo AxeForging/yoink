@@ -29,6 +29,9 @@ yoink log 1 --lines 100
 # Send input to a process waiting for confirmation
 yoink send 1 "y"
 
+# Send sensitive input (passwords, tokens) — hidden from logs
+yoink send-redacted 1 "my-secret-token"
+
 # Full interactive reattach (Ctrl+] to detach)
 yoink attach 1
 
@@ -48,6 +51,7 @@ yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open f
 - **ls**: Lists all processes with state (running/done/failed), PID, exit code
 - **log**: Shows buffered output (last 1000 lines kept per process)
 - **send**: Writes text to the process stdin (fire-and-forget)
+- **send-redacted**: Same as send, but input is masked in logs
 - **attach**: Bridges your terminal to the process PTY for full interactive control
 - **kill**: Sends SIGTERM (or SIGKILL with --force)
 - **clean**: Removes finished processes from the list
@@ -58,7 +62,7 @@ The daemon auto-starts when needed and stores its socket at `~/.yoink/yoink.sock
 
 | Feature | Linux | macOS | Windows |
 |---------|-------|-------|---------|
-| run/ls/log/send/kill/clean | Yes | Yes | Planned |
+| run/ls/log/send/send-redacted/kill/clean | Yes | Yes | Planned |
 | attach (PTY reattach) | Yes | Yes | Planned |
 
 ## Development
