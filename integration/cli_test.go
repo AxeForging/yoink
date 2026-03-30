@@ -350,6 +350,71 @@ func TestIntegration_WaitStreamsOutput(t *testing.T) {
 	}
 }
 
+func TestIntegration_WaitMultipleProcesses(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn two fast commands
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo multi-a",
+		Alias:   "a",
+	})
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo multi-b",
+		Alias:   "b",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Wait for both
+	output, err := env.run("wait", "a", "b", "--timeout", "5", "--poll", "1")
+	if err != nil {
+		t.Fatalf("wait failed: %v\noutput: %s", err, output)
+	}
+	// Multi-wait prefixes output with [alias]
+	if !strings.Contains(output, "[a]") {
+		t.Errorf("expected [a] label in output, got: %q", output)
+	}
+	if !strings.Contains(output, "[b]") {
+		t.Errorf("expected [b] label in output, got: %q", output)
+	}
+	if !strings.Contains(output, "multi-a") {
+		t.Errorf("expected 'multi-a' in output, got: %q", output)
+	}
+	if !strings.Contains(output, "multi-b") {
+		t.Errorf("expected 'multi-b' in output, got: %q", output)
+	}
+}
+
+func TestIntegration_WaitMultipleFailFast(t *testing.T) {
+	env := newTestEnv(t)
+
+	// One succeeds, one fails
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo good",
+		Alias:   "ok",
+	})
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "exit 5",
+		Alias:   "bad",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	_, err := env.run("wait", "ok", "bad", "--timeout", "5", "--poll", "1")
+	if err == nil {
+		t.Fatal("expected wait to fail when one process fails")
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() != 5 {
+			t.Errorf("expected exit code 5, got %d", exitErr.ExitCode())
+		}
+	}
+}
+
 func TestIntegration_ProcessExitCode(t *testing.T) {
 	env := newTestEnv(t)
 

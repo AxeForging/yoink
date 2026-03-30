@@ -44,6 +44,9 @@ yoink attach deploy
 # Wait for a process to finish (streams output, exits with process exit code)
 yoink wait deploy --timeout 300 --poll 5
 
+# Wait for multiple processes at once (fail-fast on first failure)
+yoink wait build install runner-startup --timeout 300
+
 # Wait with custom timeout message
 yoink wait build --timeout 60 --message "Build exceeded 1min budget"
 

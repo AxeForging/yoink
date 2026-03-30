@@ -81,9 +81,10 @@ func main() {
 			Action:  logAction.Execute,
 		},
 		{
-			Name:    "wait",
-			Aliases: []string{"w"},
-			Usage:   "Wait for a process to finish, streaming output (exit 124 on timeout)",
+			Name:      "wait",
+			Aliases:   []string{"w"},
+			ArgsUsage: "<id|alias>...",
+			Usage:     "Wait for one or more processes to finish, streaming output (exit 124 on timeout)",
 			Flags:   []cli.Flag{timeoutFlag, pollFlag, messageFlag},
 			Action:  waitAction.Execute,
 		},

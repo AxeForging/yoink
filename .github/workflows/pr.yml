@@ -320,6 +320,18 @@ jobs:
           ./yoink kill wait-timeout
           sleep 1
 
+      - name: "Scenario 5: Wait for multiple processes at once"
+        run: |
+          ./yoink run --alias wait-ma "sh -c 'sleep 1; echo done-a'"
+          ./yoink run --alias wait-mb "sh -c 'sleep 2; echo done-b'"
+          OUTPUT=$(./yoink wait wait-ma wait-mb --timeout 10 --poll 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "\[wait-ma\]" || (echo "FAIL: expected [wait-ma] label" && exit 1)
+          echo "$OUTPUT" | grep -q "\[wait-mb\]" || (echo "FAIL: expected [wait-mb] label" && exit 1)
+          echo "$OUTPUT" | grep -q "done-a" || (echo "FAIL: expected done-a" && exit 1)
+          echo "$OUTPUT" | grep -q "done-b" || (echo "FAIL: expected done-b" && exit 1)
+          echo "PASS: Multi-wait returned after all processes finished with labeled output"
+
       - name: "Scenario 5: Wait for a failed process (should propagate exit code)"
         run: |
           ./yoink run --alias wait-fail "sh -c 'echo failing-now; exit 3'"
