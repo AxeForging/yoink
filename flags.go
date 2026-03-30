@@ -27,3 +27,20 @@ var aliasFlag = cli.StringFlag{
 	Name:  "alias",
 	Usage: "Assign an alias to the process for easier reference",
 }
+
+var timeoutFlag = cli.IntFlag{
+	Name:  "timeout, t",
+	Value: 0,
+	Usage: "Maximum seconds to wait (0 = wait forever)",
+}
+
+var pollFlag = cli.IntFlag{
+	Name:  "poll, p",
+	Value: 2,
+	Usage: "Seconds between state checks",
+}
+
+var messageFlag = cli.StringFlag{
+	Name:  "message, m",
+	Usage: "Custom error message on timeout",
+}

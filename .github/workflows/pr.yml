@@ -286,6 +286,66 @@ jobs:
           fi
           echo "PASS: Token was sent but redacted in logs"
 
+      - name: "Scenario 5: Wait for a fast process (already done)"
+        run: |
+          ./yoink run --alias wait-fast "echo wait-pipeline-test"
+          sleep 1
+          OUTPUT=$(./yoink wait wait-fast --timeout 5 --poll 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "wait-pipeline-test" || (echo "FAIL: expected output not streamed" && exit 1)
+          echo "PASS: Wait returned immediately for finished process"
+
+      - name: "Scenario 5: Wait for a slow process with streaming"
+        run: |
+          ./yoink run --alias wait-slow "sh -c 'echo step-1; sleep 2; echo step-2; sleep 2; echo step-3'"
+          OUTPUT=$(./yoink wait wait-slow --timeout 15 --poll 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "step-1" || (echo "FAIL: expected step-1" && exit 1)
+          echo "$OUTPUT" | grep -q "step-3" || (echo "FAIL: expected step-3" && exit 1)
+          echo "PASS: Wait streamed output and detected completion"
+
+      - name: "Scenario 5: Wait with timeout (should fail with exit 124)"
+        run: |
+          ./yoink run --alias wait-timeout "sleep 300"
+          sleep 1
+          set +e
+          OUTPUT=$(./yoink wait wait-timeout --timeout 3 --poll 1 --message "build exceeded time budget" 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
+          echo "Exit code: $EXIT_CODE"
+          [ "$EXIT_CODE" -eq 124 ] || (echo "FAIL: expected exit code 124, got $EXIT_CODE" && exit 1)
+          echo "$OUTPUT" | grep -q "build exceeded time budget" || (echo "FAIL: expected custom message" && exit 1)
+          echo "PASS: Timeout exits 124 with custom message"
+          ./yoink kill wait-timeout
+          sleep 1
+
+      - name: "Scenario 5: Wait for multiple processes at once"
+        run: |
+          ./yoink run --alias wait-ma "sh -c 'sleep 1; echo done-a'"
+          ./yoink run --alias wait-mb "sh -c 'sleep 2; echo done-b'"
+          OUTPUT=$(./yoink wait wait-ma wait-mb --timeout 10 --poll 1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "\[wait-ma\]" || (echo "FAIL: expected [wait-ma] label" && exit 1)
+          echo "$OUTPUT" | grep -q "\[wait-mb\]" || (echo "FAIL: expected [wait-mb] label" && exit 1)
+          echo "$OUTPUT" | grep -q "done-a" || (echo "FAIL: expected done-a" && exit 1)
+          echo "$OUTPUT" | grep -q "done-b" || (echo "FAIL: expected done-b" && exit 1)
+          echo "PASS: Multi-wait returned after all processes finished with labeled output"
+
+      - name: "Scenario 5: Wait for a failed process (should propagate exit code)"
+        run: |
+          ./yoink run --alias wait-fail "sh -c 'echo failing-now; exit 3'"
+          sleep 1
+          set +e
+          OUTPUT=$(./yoink wait wait-fail --timeout 5 --poll 1 2>&1)
+          EXIT_CODE=$?
+          set -e
+          echo "$OUTPUT"
+          echo "Exit code: $EXIT_CODE"
+          [ "$EXIT_CODE" -eq 3 ] || (echo "FAIL: expected exit code 3, got $EXIT_CODE" && exit 1)
+          echo "$OUTPUT" | grep -q "failing-now" || (echo "FAIL: expected output before failure" && exit 1)
+          echo "PASS: Wait propagated process exit code"
+
       - name: "Clean up finished processes"
         run: |
           ./yoink clean

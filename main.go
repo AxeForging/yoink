@@ -37,6 +37,7 @@ func main() {
 	sendAction := actions.NewSendAction(client, false)
 	sendRedactedAction := actions.NewSendAction(client, true)
 	attachAction := actions.NewAttachAction(client)
+	waitAction := actions.NewWaitAction(client)
 	killAction := actions.NewKillAction(client)
 	cleanAction := actions.NewCleanAction(client)
 	daemonAction := actions.NewDaemonAction(sockPath)
@@ -78,6 +79,14 @@ func main() {
 			Usage:   "Show recent output from a process",
 			Flags:   []cli.Flag{linesFlag, newFlag},
 			Action:  logAction.Execute,
+		},
+		{
+			Name:      "wait",
+			Aliases:   []string{"w"},
+			ArgsUsage: "<id|alias>...",
+			Usage:     "Wait for one or more processes to finish, streaming output (exit 124 on timeout)",
+			Flags:   []cli.Flag{timeoutFlag, pollFlag, messageFlag},
+			Action:  waitAction.Execute,
 		},
 		{
 			Name:    "send",
