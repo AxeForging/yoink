@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+
 	"github.com/AxeForging/yoink/domain"
 )
 
@@ -256,6 +257,96 @@ func TestIntegration_MultipleProcesses(t *testing.T) {
 		if p.State != domain.StateDone {
 			t.Errorf("process %d: expected done, got %s", p.ID, p.State)
 		}
+	}
+}
+
+func TestIntegration_WaitForDone(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn a fast command
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo wait-done-test",
+		Alias:   "fast",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Wait should succeed immediately (process already done)
+	output, err := env.run("wait", "fast", "--timeout", "5", "--poll", "1")
+	if err != nil {
+		t.Fatalf("wait failed: %v\noutput: %s", err, output)
+	}
+	if !strings.Contains(output, "wait-done-test") {
+		t.Errorf("expected output to contain 'wait-done-test', got: %q", output)
+	}
+}
+
+func TestIntegration_WaitForTimeout(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn a long-running command
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+		Alias:   "slow",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Wait should timeout
+	output, err := env.run("wait", "slow", "--timeout", "2", "--poll", "1", "--message", "custom timeout msg")
+	if err == nil {
+		t.Fatal("expected wait to fail on timeout")
+	}
+	if !strings.Contains(output, "custom timeout msg") {
+		t.Errorf("expected custom timeout message, got: %q", output)
+	}
+}
+
+func TestIntegration_WaitForFailed(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "exit 7",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Wait should exit with the process exit code
+	_, err := env.run("wait", "1", "--timeout", "5", "--poll", "1")
+	if err == nil {
+		t.Fatal("expected wait to fail for failed process")
+	}
+	// The exit code should be 7
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() != 7 {
+			t.Errorf("expected exit code 7, got %d", exitErr.ExitCode())
+		}
+	}
+}
+
+func TestIntegration_WaitStreamsOutput(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn a script that outputs lines then exits
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'echo line-one; sleep 1; echo line-two; sleep 1; echo line-three'",
+		Alias:   "streamer",
+	})
+
+	// Wait should capture all output
+	output, err := env.run("wait", "streamer", "--timeout", "10", "--poll", "1")
+	if err != nil {
+		t.Fatalf("wait failed: %v\noutput: %s", err, output)
+	}
+	if !strings.Contains(output, "line-one") {
+		t.Errorf("expected 'line-one' in output, got: %q", output)
+	}
+	if !strings.Contains(output, "line-three") {
+		t.Errorf("expected 'line-three' in output, got: %q", output)
 	}
 }
 

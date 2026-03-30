@@ -41,6 +41,12 @@ yoink send-redacted deploy "my-secret-token"
 # Full interactive reattach (Ctrl+] to detach)
 yoink attach deploy
 
+# Wait for a process to finish (streams output, exits with process exit code)
+yoink wait deploy --timeout 300 --poll 5
+
+# Wait with custom timeout message
+yoink wait build --timeout 60 --message "Build exceeded 1min budget"
+
 # Kill a process
 yoink kill deploy
 yoink kill 1 --force    # SIGKILL
@@ -56,6 +62,7 @@ yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open f
 - **run**: Spawns the command under a PTY in the daemon, returns an ID. Use `--alias` to name it
 - **ls**: Lists all processes with state (running/done/failed), PID, exit code
 - **log**: Shows buffered output (last 1000 lines kept per process). Use `--new` to see only lines since the last `--new` call
+- **wait**: Polls a process until it finishes, streaming new output to stdout on each cycle. Exits 0 on success, propagates the process exit code on failure, or exits 124 on timeout (matches GNU `timeout` convention). Flags: `--timeout` (seconds, 0=forever), `--poll` (seconds, default 2), `--message` (custom timeout error)
 - **send**: Writes text to the process stdin (fire-and-forget)
 - **send-redacted**: Same as send, but input is masked in logs
 - **attach**: Bridges your terminal to the process PTY for full interactive control
@@ -68,7 +75,7 @@ The daemon auto-starts when needed and stores its socket at `~/.yoink/yoink.sock
 
 | Feature | Linux | macOS | Windows |
 |---------|-------|-------|---------|
-| run/ls/log/send/send-redacted/kill/clean | Yes | Yes | Planned |
+| run/ls/log/wait/send/send-redacted/kill/clean | Yes | Yes | Planned |
 | attach (PTY reattach) | Yes | Yes | Planned |
 
 ## Development

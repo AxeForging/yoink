@@ -437,6 +437,50 @@ func TestDaemon_AliasNotFound(t *testing.T) {
 	}
 }
 
+func TestDaemon_WaitPolling(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	// Spawn a fast command
+	sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo wait-test",
+		Alias:   "waitable",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Simulate wait polling: log --new to drain output
+	logResp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "waitable",
+		New:   true,
+	})
+	if !logResp.Success {
+		t.Fatalf("log --new failed: %s", logResp.Error)
+	}
+	if !strings.Contains(logResp.Output, "wait-test") {
+		t.Errorf("expected 'wait-test' in output, got: %q", logResp.Output)
+	}
+
+	// List to check state (what wait command does)
+	listResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqList})
+	if !listResp.Success {
+		t.Fatalf("list failed: %s", listResp.Error)
+	}
+	found := false
+	for _, p := range listResp.Processes {
+		if p.Alias == "waitable" {
+			found = true
+			if p.State != domain.StateDone {
+				t.Errorf("expected state done, got %s", p.State)
+			}
+		}
+	}
+	if !found {
+		t.Error("process 'waitable' not found in list")
+	}
+}
+
 func TestDaemon_Shutdown(t *testing.T) {
 	_, sockPath := startTestDaemon(t)
 
