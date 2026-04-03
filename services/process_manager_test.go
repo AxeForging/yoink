@@ -820,3 +820,82 @@ func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
 		t.Errorf("snapshot must not contain raw ANSI escape sequences, got:\n%s", snap)
 	}
 }
+
+func TestStripVTProblematic(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []byte
+		want  []byte
+	}{
+		{
+			name:  "plain text passes through",
+			input: []byte("hello world"),
+			want:  []byte("hello world"),
+		},
+		{
+			name:  "normal CSI erase screen passes through",
+			input: []byte("\x1b[2J"),
+			want:  []byte("\x1b[2J"),
+		},
+		{
+			name:  "normal CSI color passes through",
+			input: []byte("\x1b[31mred\x1b[0m"),
+			want:  []byte("\x1b[31mred\x1b[0m"),
+		},
+		{
+			name:  "normal CSI cursor move passes through",
+			input: []byte("\x1b[1;1H"),
+			want:  []byte("\x1b[1;1H"),
+		},
+		{
+			// kitty keyboard protocol: CSI > 1 u  (enable keyboard enhancement)
+			name:  "CSI > 1 u stripped",
+			input: []byte("\x1b[>1u"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard protocol: CSI < u  (disable keyboard enhancement)
+			name:  "CSI < u stripped",
+			input: []byte("\x1b[<u"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard: CSI > 4;2 m  (modifyOtherKeys)
+			name:  "CSI > 4;2 m stripped",
+			input: []byte("\x1b[>4;2m"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard: CSI = 1 u  (push flags)
+			name:  "CSI = 1 u stripped",
+			input: []byte("\x1b[=1u"),
+			want:  []byte{},
+		},
+		{
+			// kitty sequence surrounded by normal output
+			name:  "kitty sequence stripped from surrounding text",
+			input: []byte("before\x1b[>1uafter"),
+			want:  []byte("beforeafter"),
+		},
+		{
+			// multiple problematic sequences interleaved with normal ones
+			name:  "multiple sequences mixed",
+			input: []byte("\x1b[2J\x1b[>1u\x1b[H\x1b[<u\x1b[31m"),
+			want:  []byte("\x1b[2J\x1b[H\x1b[31m"),
+		},
+		{
+			name:  "empty input",
+			input: []byte{},
+			want:  []byte{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripVTProblematic(tt.input)
+			if string(got) != string(tt.want) {
+				t.Errorf("stripVTProblematic(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}

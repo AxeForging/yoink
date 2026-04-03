@@ -82,7 +82,7 @@ func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
 		pty:    ptmx,
 		cmd:    cmd,
 		buffer: buf,
-		vt:     vt10x.New(vt10x.WithSize(80, 24)),
+		vt:     vt10x.New(vt10x.WithSize(220, 50)),
 	}
 
 	pm.mu.Lock()
@@ -128,7 +128,7 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 			}
 			mp.attachMu.Unlock()
 
-			mp.vt.Write(data) //nolint:errcheck
+			mp.vt.Write(stripVTProblematic(data)) //nolint:errcheck
 
 			partial += string(data)
 			for {
@@ -319,6 +319,35 @@ func (pm *ProcessManager) Snapshot(id int) (string, error) {
 		return "", fmt.Errorf("process %d not found", id)
 	}
 	return renderScreen(mp.vt), nil
+}
+
+// stripVTProblematic removes CSI sequences that vt10x misinterprets due to
+// non-digit parameter prefix bytes ('>','<','='). These are kitty keyboard
+// protocol sequences (CSI > n u, CSI < u, CSI > n m, CSI > n q) which have
+// no visual effect but cause vt10x to call restoreCursor(), jumping the cursor
+// to (0,0) and corrupting subsequent rendering.
+func stripVTProblematic(data []byte) []byte {
+	out := make([]byte, 0, len(data))
+	i := 0
+	for i < len(data) {
+		if i+1 < len(data) && data[i] == 0x1b && data[i+1] == '[' {
+			j := i + 2
+			if j < len(data) && (data[j] == '>' || data[j] == '<' || data[j] == '=') {
+				// Skip to final byte (0x40–0x7E) inclusive
+				for j < len(data) && (data[j] < 0x40 || data[j] > 0x7E) {
+					j++
+				}
+				if j < len(data) {
+					j++ // include final byte in skip
+				}
+				i = j
+				continue
+			}
+		}
+		out = append(out, data[i])
+		i++
+	}
+	return out
 }
 
 // renderScreen renders the VT100 terminal state into clean plain text,
