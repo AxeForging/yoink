@@ -2,6 +2,8 @@
 
 Background process manager with interactive I/O. Spawn commands in the background, check their output, send input to hanging processes, and reattach with full terminal control.
 
+![yoink demo](docs/demo.gif)
+
 ## Install
 
 ```bash
