@@ -293,6 +293,8 @@ func (pm *ProcessManager) SendInput(id int, input string, opts SendOptions) erro
 }
 
 // FormatLogEntries formats log entries with source labels and redaction.
+// ANSI/VT escape sequences are stripped so that log output never corrupts the
+// caller's terminal (e.g. \x1b[?25l from a TUI process hiding the cursor).
 func FormatLogEntries(entries []domain.LogEntry) string {
 	if len(entries) == 0 {
 		return ""
@@ -303,9 +305,62 @@ func FormatLogEntries(entries []domain.LogEntry) string {
 		if e.Redacted {
 			text = "********"
 		}
-		lines[i] = fmt.Sprintf("[%s] %s", e.Source, text)
+		lines[i] = fmt.Sprintf("[%s] %s", e.Source, stripANSI(text))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// stripANSI removes all ANSI/VT escape sequences from s so that the result is
+// safe to print to any terminal without side-effects.  It handles:
+//   - CSI sequences: ESC [ <params> <intermediates> <final>
+//   - OSC sequences: ESC ] ... BEL  or  ESC ] ... ESC \
+//   - All other two-byte ESC sequences (Fe / Fs / Fp)
+func stripANSI(s string) string {
+	b := []byte(s)
+	out := make([]byte, 0, len(b))
+	i := 0
+	for i < len(b) {
+		if b[i] != 0x1b || i+1 >= len(b) {
+			out = append(out, b[i])
+			i++
+			continue
+		}
+		next := b[i+1]
+		switch next {
+		case '[': // CSI — skip param/intermediate bytes then one final byte
+			j := i + 2
+			// param bytes: 0x30–0x3F
+			for j < len(b) && b[j] >= 0x30 && b[j] <= 0x3F {
+				j++
+			}
+			// intermediate bytes: 0x20–0x2F
+			for j < len(b) && b[j] >= 0x20 && b[j] <= 0x2F {
+				j++
+			}
+			// final byte: 0x40–0x7E
+			if j < len(b) && b[j] >= 0x40 && b[j] <= 0x7E {
+				j++
+			}
+			i = j
+		case ']': // OSC — skip until BEL or ESC \
+			j := i + 2
+			for j < len(b) {
+				if b[j] == 0x07 { // BEL
+					j++
+					break
+				}
+				if b[j] == 0x1b && j+1 < len(b) && b[j+1] == '\\' { // ST
+					j += 2
+					break
+				}
+				j++
+			}
+			i = j
+		default: // any other two-byte ESC sequence
+			i += 2
+		}
+	}
+	return string(out)
 }
 
 // Snapshot returns the current rendered screen of the process as plain text.

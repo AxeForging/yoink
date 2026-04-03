@@ -821,6 +821,79 @@ func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
 	}
 }
 
+func TestStripANSI(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "plain text unchanged",
+			input: "hello world",
+			want:  "hello world",
+		},
+		{
+			name:  "color codes stripped",
+			input: "\x1b[31mred\x1b[0m",
+			want:  "red",
+		},
+		{
+			name:  "hide cursor stripped (terminal corruption prevention)",
+			input: "\x1b[?25l",
+			want:  "",
+		},
+		{
+			name:  "show cursor stripped",
+			input: "\x1b[?25h",
+			want:  "",
+		},
+		{
+			name:  "cursor position stripped",
+			input: "\x1b[1;1H",
+			want:  "",
+		},
+		{
+			name:  "erase display stripped",
+			input: "\x1b[2J",
+			want:  "",
+		},
+		{
+			name:  "OSC title sequence stripped",
+			input: "\x1b]0;title\x07rest",
+			want:  "rest",
+		},
+		{
+			name:  "OSC with string terminator stripped",
+			input: "\x1b]2;title\x1b\\rest",
+			want:  "rest",
+		},
+		{
+			name:  "other two-byte ESC sequence stripped",
+			input: "\x1b=text",
+			want:  "text",
+		},
+		{
+			name:  "text preserved between stripped sequences",
+			input: "\x1b[31mhello\x1b[0m world",
+			want:  "hello world",
+		},
+		{
+			name:  "alternate screen escape stripped",
+			input: "\x1b[?1049htext\x1b[?1049l",
+			want:  "text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripANSI(tt.input)
+			if got != tt.want {
+				t.Errorf("stripANSI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStripVTProblematic(t *testing.T) {
 	tests := []struct {
 		name  string
