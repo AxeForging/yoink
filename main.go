@@ -92,11 +92,13 @@ func main() {
 			Name:    "send",
 			Aliases: []string{"s"},
 			Usage:   "Send input text to a running process",
+			Flags:   []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag},
 			Action:  sendAction.Execute,
 		},
 		{
 			Name:  "send-redacted",
 			Usage: "Send input to a process (redacted in logs)",
+			Flags: []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag},
 			Action: sendRedactedAction.Execute,
 		},
 		{

@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/rs/zerolog"
@@ -158,7 +159,13 @@ func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 
 func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	if err := ds.pm.SendInput(req.ID, req.Input, req.Redacted); err != nil {
+	opts := SendOptions{
+		Redacted:  req.Redacted,
+		TypeMode:  req.TypeMode,
+		TypeDelay: time.Duration(req.TypeDelay) * time.Millisecond,
+		NoEnter:   req.NoEnter,
+	}
+	if err := ds.pm.SendInput(req.ID, req.Input, opts); err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}

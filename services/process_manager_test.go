@@ -79,7 +79,7 @@ func TestProcessManager_SpawnAndSendInput(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond) // let cat start
 
-	if err := pm.SendInput(id, "test-input-123", false); err != nil {
+	if err := pm.SendInput(id, "test-input-123", SendOptions{}); err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestProcessManager_SendInput_NotRunning(t *testing.T) {
 	id, _ := pm.Spawn("echo fast", "")
 	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
 
-	err := pm.SendInput(id, "too late", false)
+	err := pm.SendInput(id, "too late", SendOptions{})
 	if err == nil {
 		t.Error("expected error sending to finished process")
 	}
@@ -244,7 +244,7 @@ func TestProcessManager_LabeledOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "hello", false)
+	pm.SendInput(id, "hello", SendOptions{})
 	time.Sleep(500 * time.Millisecond)
 
 	output, _ := pm.GetOutput(id, 100)
@@ -266,7 +266,7 @@ func TestProcessManager_SendRedacted(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "super-secret-token", true)
+	pm.SendInput(id, "super-secret-token", SendOptions{Redacted: true})
 	time.Sleep(500 * time.Millisecond)
 
 	// Formatted output should show redacted
@@ -308,7 +308,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "first", false)
+	pm.SendInput(id, "first", SendOptions{})
 	waitForOutput(t, pm, id, "reply-first", 5*time.Second)
 	// Let PTY echo settle
 	time.Sleep(200 * time.Millisecond)
@@ -332,7 +332,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	// Write more
-	pm.SendInput(id, "second", false)
+	pm.SendInput(id, "second", SendOptions{})
 	waitForOutput(t, pm, id, "reply-second", 5*time.Second)
 	time.Sleep(200 * time.Millisecond)
 
@@ -464,7 +464,7 @@ func TestProcessManager_AliasWithOperations(t *testing.T) {
 
 	// Resolve alias and use for operations
 	resolved, _ := pm.ResolveID("interactive")
-	if err := pm.SendInput(resolved, "hello-alias", false); err != nil {
+	if err := pm.SendInput(resolved, "hello-alias", SendOptions{}); err != nil {
 		t.Fatalf("SendInput via alias failed: %v", err)
 	}
 
@@ -475,4 +475,169 @@ func TestProcessManager_AliasWithOperations(t *testing.T) {
 		t.Fatalf("Kill via alias failed: %v", err)
 	}
 	waitForState(t, pm, id, domain.StateFailed, 5*time.Second)
+}
+
+// --- Type mode tests ---
+
+func TestProcessManager_TypeMode_OutputAppears(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// cat echoes back what it receives; with type mode the chars arrive one by one
+	// but the output should still contain the full string once newline is sent.
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "typed-hello", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond}); err != nil {
+		t.Fatalf("SendInput (type mode) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "typed-hello", 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_DelayIsRespected(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 5 chars × 20ms = at least 100ms elapsed
+	input := "abcde"
+	delay := 20 * time.Millisecond
+	start := time.Now()
+	if err := pm.SendInput(id, input, SendOptions{TypeMode: true, TypeDelay: delay}); err != nil {
+		t.Fatalf("SendInput (type mode with delay) failed: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	minExpected := time.Duration(len([]rune(input))-1) * delay
+	if elapsed < minExpected {
+		t.Errorf("expected at least %v elapsed for type mode, got %v", minExpected, elapsed)
+	}
+
+	waitForOutput(t, pm, id, input, 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_ZeroDelay(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Zero delay: chars sent immediately, no sleep
+	if err := pm.SendInput(id, "nodelay", SendOptions{TypeMode: true, TypeDelay: 0}); err != nil {
+		t.Fatalf("SendInput (type mode, zero delay) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "nodelay", 5*time.Second)
+}
+
+func TestProcessManager_NoEnter_NoLineEcho(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Use a shell that echoes lines only after receiving a newline.
+	// send-without-enter should NOT produce a completed line in output.
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Send partial input without newline — the read builtin won't complete yet.
+	if err := pm.SendInput(id, "partial", SendOptions{NoEnter: true}); err != nil {
+		t.Fatalf("SendInput (no-enter) failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// No "got-" line should have appeared yet because read is still waiting.
+	entries, _ := pm.GetLogEntries(id, 100)
+	for _, e := range entries {
+		if e.Source == domain.SourceStdout && strings.Contains(e.Text, "got-") {
+			t.Errorf("did not expect 'got-' output before newline, got: %q", e.Text)
+		}
+	}
+
+	// Now complete with newline; process should echo got-partial.
+	if err := pm.SendInput(id, "", SendOptions{}); err != nil {
+		t.Fatalf("SendInput (newline completion) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "got-partial", 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_WithRedaction(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "secret-typed", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond, Redacted: true}); err != nil {
+		t.Fatalf("SendInput (type mode + redacted) failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	output, _ := pm.GetOutput(id, 100)
+	if strings.Contains(output, "secret-typed") {
+		t.Errorf("redacted input should NOT appear in formatted output, got: %q", output)
+	}
+	if !strings.Contains(output, "********") {
+		t.Errorf("expected '********' for redacted input in output, got: %q", output)
+	}
+}
+
+func TestProcessManager_TypeMode_NoEnter_Combined(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Type char by char without a trailing newline, then complete separately.
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "combo", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond, NoEnter: true}); err != nil {
+		t.Fatalf("SendInput (type + no-enter) failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Still no completed line.
+	entries, _ := pm.GetLogEntries(id, 100)
+	for _, e := range entries {
+		if e.Source == domain.SourceStdout && strings.Contains(e.Text, "got-") {
+			t.Errorf("did not expect 'got-' before newline, got: %q", e.Text)
+		}
+	}
+
+	// Complete with newline.
+	if err := pm.SendInput(id, "", SendOptions{}); err != nil {
+		t.Fatalf("SendInput (newline) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "got-combo", 5*time.Second)
 }

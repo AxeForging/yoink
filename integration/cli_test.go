@@ -437,3 +437,81 @@ func TestIntegration_ProcessExitCode(t *testing.T) {
 		t.Errorf("expected exit code 7, got %d", p.ExitCode)
 	}
 }
+
+func TestIntegration_SendTypeMode(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn cat which echoes back what it receives.
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "cat",
+		Alias:   "typer",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Use the CLI --type flag with a short delay so the test stays fast.
+	out, err := env.run("send", "typer", "type-mode-works", "--type", "--delay", "5")
+	if err != nil {
+		t.Fatalf("send --type failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if !strings.Contains(logResp.Output, "type-mode-works") {
+		t.Errorf("expected 'type-mode-works' in output, got: %q", logResp.Output)
+	}
+}
+
+func TestIntegration_SendNoEnter(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Script reads a line and echoes it back prefixed with "got-".
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'read -r line; echo got-$line'",
+		Alias:   "reader",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Send partial input without newline via --no-enter.
+	_, err := env.run("send", "reader", "hello", "--no-enter")
+	if err != nil {
+		t.Fatalf("send --no-enter failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Process should not have produced "got-" yet.
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if strings.Contains(logResp.Output, "got-") {
+		t.Errorf("did not expect 'got-' before newline was sent, got: %q", logResp.Output)
+	}
+
+	// Now complete with just a newline.
+	_, err = env.run("send", "reader", "")
+	if err != nil {
+		t.Fatalf("send (newline completion) failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp = env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if !strings.Contains(logResp.Output, "got-hello") {
+		t.Errorf("expected 'got-hello' after newline, got: %q", logResp.Output)
+	}
+}

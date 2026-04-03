@@ -54,15 +54,18 @@ const (
 
 // DaemonRequest is sent from client to daemon over the Unix socket.
 type DaemonRequest struct {
-	Type     RequestType `json:"type"`
-	ID       int         `json:"id,omitempty"`
-	Alias    string      `json:"alias,omitempty"`
-	Command  string      `json:"command,omitempty"`
-	Input    string      `json:"input,omitempty"`
-	Lines    int         `json:"lines,omitempty"`
-	New      bool        `json:"new,omitempty"`
-	Force    bool        `json:"force,omitempty"`
-	Redacted bool        `json:"redacted,omitempty"`
+	Type      RequestType `json:"type"`
+	ID        int         `json:"id,omitempty"`
+	Alias     string      `json:"alias,omitempty"`
+	Command   string      `json:"command,omitempty"`
+	Input     string      `json:"input,omitempty"`
+	Lines     int         `json:"lines,omitempty"`
+	New       bool        `json:"new,omitempty"`
+	Force     bool        `json:"force,omitempty"`
+	Redacted  bool        `json:"redacted,omitempty"`
+	TypeMode  bool        `json:"type_mode,omitempty"`
+	TypeDelay int         `json:"type_delay,omitempty"` // milliseconds between characters
+	NoEnter   bool        `json:"no_enter,omitempty"`
 }
 
 // DaemonResponse is sent from daemon to client over the Unix socket.

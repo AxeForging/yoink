@@ -230,9 +230,17 @@ func (pm *ProcessManager) GetLogEntries(id, lines int) ([]domain.LogEntry, error
 	return mp.buffer.ReadLast(lines), nil
 }
 
-// SendInput writes text followed by a newline to the process PTY.
-// If redacted is true, the input is logged as [REDACTED] in the ring buffer.
-func (pm *ProcessManager) SendInput(id int, input string, redacted bool) error {
+// SendOptions controls how input is delivered to a process PTY.
+type SendOptions struct {
+	Redacted  bool
+	TypeMode  bool          // send character by character
+	TypeDelay time.Duration // delay between characters in type mode
+	NoEnter   bool          // omit the trailing newline
+}
+
+// SendInput writes text to the process PTY.
+// By default it appends a newline; use SendOptions to customise behaviour.
+func (pm *ProcessManager) SendInput(id int, input string, opts SendOptions) error {
 	pm.mu.RLock()
 	mp, ok := pm.processes[id]
 	pm.mu.RUnlock()
@@ -244,7 +252,7 @@ func (pm *ProcessManager) SendInput(id int, input string, redacted bool) error {
 	}
 
 	// If redacted, register pattern to catch PTY echo
-	if redacted {
+	if opts.Redacted {
 		mp.redactMu.Lock()
 		mp.redactPatterns = append(mp.redactPatterns, input)
 		mp.redactMu.Unlock()
@@ -254,11 +262,29 @@ func (pm *ProcessManager) SendInput(id int, input string, redacted bool) error {
 	mp.buffer.Write(domain.LogEntry{
 		Source:   domain.SourceStdin,
 		Text:     input,
-		Redacted: redacted,
+		Redacted: opts.Redacted,
 	})
 
-	_, err := mp.pty.Write([]byte(input + "\n"))
-	return err
+	if opts.TypeMode {
+		for _, ch := range input {
+			if _, err := mp.pty.Write([]byte(string(ch))); err != nil {
+				return err
+			}
+			if opts.TypeDelay > 0 {
+				time.Sleep(opts.TypeDelay)
+			}
+		}
+	} else {
+		if _, err := mp.pty.Write([]byte(input)); err != nil {
+			return err
+		}
+	}
+
+	if !opts.NoEnter {
+		_, err := mp.pty.Write([]byte("\n"))
+		return err
+	}
+	return nil
 }
 
 // FormatLogEntries formats log entries with source labels and redaction.
