@@ -3,6 +3,7 @@
 package services
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,7 @@ func TestProcessManager_SpawnAndSendInput(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond) // let cat start
 
-	if err := pm.SendInput(id, "test-input-123", false); err != nil {
+	if err := pm.SendInput(id, "test-input-123", SendOptions{}); err != nil {
 		t.Fatalf("SendInput failed: %v", err)
 	}
 
@@ -199,7 +200,7 @@ func TestProcessManager_SendInput_NotRunning(t *testing.T) {
 	id, _ := pm.Spawn("echo fast", "")
 	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
 
-	err := pm.SendInput(id, "too late", false)
+	err := pm.SendInput(id, "too late", SendOptions{})
 	if err == nil {
 		t.Error("expected error sending to finished process")
 	}
@@ -244,7 +245,7 @@ func TestProcessManager_LabeledOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "hello", false)
+	pm.SendInput(id, "hello", SendOptions{})
 	time.Sleep(500 * time.Millisecond)
 
 	output, _ := pm.GetOutput(id, 100)
@@ -266,7 +267,7 @@ func TestProcessManager_SendRedacted(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "super-secret-token", true)
+	pm.SendInput(id, "super-secret-token", SendOptions{Redacted: true})
 	time.Sleep(500 * time.Millisecond)
 
 	// Formatted output should show redacted
@@ -308,7 +309,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "first", false)
+	pm.SendInput(id, "first", SendOptions{})
 	waitForOutput(t, pm, id, "reply-first", 5*time.Second)
 	// Let PTY echo settle
 	time.Sleep(200 * time.Millisecond)
@@ -332,7 +333,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	// Write more
-	pm.SendInput(id, "second", false)
+	pm.SendInput(id, "second", SendOptions{})
 	waitForOutput(t, pm, id, "reply-second", 5*time.Second)
 	time.Sleep(200 * time.Millisecond)
 
@@ -464,7 +465,7 @@ func TestProcessManager_AliasWithOperations(t *testing.T) {
 
 	// Resolve alias and use for operations
 	resolved, _ := pm.ResolveID("interactive")
-	if err := pm.SendInput(resolved, "hello-alias", false); err != nil {
+	if err := pm.SendInput(resolved, "hello-alias", SendOptions{}); err != nil {
 		t.Fatalf("SendInput via alias failed: %v", err)
 	}
 
@@ -475,4 +476,499 @@ func TestProcessManager_AliasWithOperations(t *testing.T) {
 		t.Fatalf("Kill via alias failed: %v", err)
 	}
 	waitForState(t, pm, id, domain.StateFailed, 5*time.Second)
+}
+
+// --- Type mode tests ---
+
+func TestProcessManager_TypeMode_OutputAppears(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// cat echoes back what it receives; with type mode the chars arrive one by one
+	// but the output should still contain the full string once newline is sent.
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "typed-hello", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond}); err != nil {
+		t.Fatalf("SendInput (type mode) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "typed-hello", 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_DelayIsRespected(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// 5 chars × 20ms = at least 100ms elapsed
+	input := "abcde"
+	delay := 20 * time.Millisecond
+	start := time.Now()
+	if err := pm.SendInput(id, input, SendOptions{TypeMode: true, TypeDelay: delay}); err != nil {
+		t.Fatalf("SendInput (type mode with delay) failed: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	minExpected := time.Duration(len([]rune(input))-1) * delay
+	if elapsed < minExpected {
+		t.Errorf("expected at least %v elapsed for type mode, got %v", minExpected, elapsed)
+	}
+
+	waitForOutput(t, pm, id, input, 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_ZeroDelay(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Zero delay: chars sent immediately, no sleep
+	if err := pm.SendInput(id, "nodelay", SendOptions{TypeMode: true, TypeDelay: 0}); err != nil {
+		t.Fatalf("SendInput (type mode, zero delay) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "nodelay", 5*time.Second)
+}
+
+func TestProcessManager_NoEnter_NoLineEcho(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Use a shell that echoes lines only after receiving a newline.
+	// send-without-enter should NOT produce a completed line in output.
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Send partial input without newline — the read builtin won't complete yet.
+	if err := pm.SendInput(id, "partial", SendOptions{NoEnter: true}); err != nil {
+		t.Fatalf("SendInput (no-enter) failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// No "got-" line should have appeared yet because read is still waiting.
+	entries, _ := pm.GetLogEntries(id, 100)
+	for _, e := range entries {
+		if e.Source == domain.SourceStdout && strings.Contains(e.Text, "got-") {
+			t.Errorf("did not expect 'got-' output before newline, got: %q", e.Text)
+		}
+	}
+
+	// Now complete with newline; process should echo got-partial.
+	if err := pm.SendInput(id, "", SendOptions{}); err != nil {
+		t.Fatalf("SendInput (newline completion) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "got-partial", 5*time.Second)
+}
+
+func TestProcessManager_TypeMode_WithRedaction(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("cat", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "secret-typed", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond, Redacted: true}); err != nil {
+		t.Fatalf("SendInput (type mode + redacted) failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	output, _ := pm.GetOutput(id, 100)
+	if strings.Contains(output, "secret-typed") {
+		t.Errorf("redacted input should NOT appear in formatted output, got: %q", output)
+	}
+	if !strings.Contains(output, "********") {
+		t.Errorf("expected '********' for redacted input in output, got: %q", output)
+	}
+}
+
+func TestProcessManager_TypeMode_NoEnter_Combined(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Type char by char without a trailing newline, then complete separately.
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "combo", SendOptions{TypeMode: true, TypeDelay: 5 * time.Millisecond, NoEnter: true}); err != nil {
+		t.Fatalf("SendInput (type + no-enter) failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	// Still no completed line.
+	entries, _ := pm.GetLogEntries(id, 100)
+	for _, e := range entries {
+		if e.Source == domain.SourceStdout && strings.Contains(e.Text, "got-") {
+			t.Errorf("did not expect 'got-' before newline, got: %q", e.Text)
+		}
+	}
+
+	// Complete with newline.
+	if err := pm.SendInput(id, "", SendOptions{}); err != nil {
+		t.Fatalf("SendInput (newline) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "got-combo", 5*time.Second)
+}
+
+// --- Snapshot tests ---
+
+func TestProcessManager_Snapshot_PlainText(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// A plain process with no TUI — snapshot should still show its output.
+	id, err := pm.Spawn("sh -c 'echo hello-snap; sleep 300'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "hello-snap", 5*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "hello-snap") {
+		t.Errorf("expected 'hello-snap' in snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_PositionedText(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Use ANSI cursor positioning — yoink log would show raw escape garbage,
+	// but snapshot should give clean rendered text at the correct coordinates.
+	id, err := pm.Spawn(`sh -c 'printf "\033[2J\033[3;5Hyoink-tui-test\033[5;1Hsecond-line"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "yoink-tui-test") {
+		t.Errorf("expected 'yoink-tui-test' at row 3 in snapshot, got:\n%s", snap)
+	}
+	if !strings.Contains(snap, "second-line") {
+		t.Errorf("expected 'second-line' at row 5 in snapshot, got:\n%s", snap)
+	}
+
+	// Verify positioning: "yoink-tui-test" should appear before "second-line"
+	lines := strings.Split(snap, "\n")
+	row3, row5 := -1, -1
+	for i, line := range lines {
+		if strings.Contains(line, "yoink-tui-test") {
+			row3 = i
+		}
+		if strings.Contains(line, "second-line") {
+			row5 = i
+		}
+	}
+	if row3 < 0 || row5 < 0 || row3 >= row5 {
+		t.Errorf("expected 'yoink-tui-test' (row %d) before 'second-line' (row %d)", row3, row5)
+	}
+}
+
+func TestProcessManager_Snapshot_ClearAndRedraw(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Process that draws one thing, then clears and draws something else.
+	// Snapshot should reflect the FINAL screen state, not the history.
+	// yoink log would show both; snapshot shows only what's currently rendered.
+	id, err := pm.Spawn(`sh -c 'printf "initial-content"; sleep 0.2; printf "\033[2Jfinal-content"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(600 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "final-content") {
+		t.Errorf("expected 'final-content' in snapshot, got:\n%s", snap)
+	}
+	if strings.Contains(snap, "initial-content") {
+		t.Errorf("expected 'initial-content' to be cleared from snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_FinishedProcess(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Snapshot works on finished processes — the VT holds the last frame.
+	id, err := pm.Spawn("echo snap-after-exit", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot of finished process failed: %v", err)
+	}
+	if !strings.Contains(snap, "snap-after-exit") {
+		t.Errorf("expected 'snap-after-exit' in snapshot of finished process, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_NotFound(t *testing.T) {
+	pm := NewProcessManager(100)
+	_, err := pm.Snapshot(999)
+	if err == nil {
+		t.Error("expected error for non-existent process")
+	}
+}
+
+func TestProcessManager_Snapshot_ScreenDimensions(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// VT emulator is 80×24. Content placed beyond col 80 or row 24 is clipped.
+	// Content within bounds must be reachable via snapshot.
+	id, err := pm.Spawn(`sh -c 'printf "\033[24;1Hlast-row"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "last-row") {
+		t.Errorf("expected text at last row (row 24) in snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
+	// top is the canonical TUI process — log gives garbage, snapshot gives clean text.
+	if _, err := exec.LookPath("top"); err != nil {
+		t.Skip("top not available on this system")
+	}
+
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Limit to 18 lines so output fits within the 24-row VT buffer regardless
+	// of how many processes are running. Works on both Linux (top -b -n 1) and
+	// macOS (top -l 1). The column-header row (with "PID") is always within
+	// the first 10 lines of top output, well inside the 18-line window.
+	id, err := pm.Spawn("sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForState(t, pm, id, domain.StateDone, 10*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot of top failed: %v", err)
+	}
+
+	// top output always contains these header fields within the first 18 lines
+	for _, want := range []string{"PID", "%"} {
+		if !strings.Contains(snap, want) {
+			t.Errorf("expected %q in top snapshot, got:\n%s", want, snap)
+		}
+	}
+
+	// Key value: no raw ANSI escape sequences in snapshot output
+	if strings.Contains(snap, "\x1b[") {
+		t.Errorf("snapshot must not contain raw ANSI escape sequences, got:\n%s", snap)
+	}
+}
+
+func TestStripANSI(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "plain text unchanged",
+			input: "hello world",
+			want:  "hello world",
+		},
+		{
+			name:  "color codes stripped",
+			input: "\x1b[31mred\x1b[0m",
+			want:  "red",
+		},
+		{
+			name:  "hide cursor stripped (terminal corruption prevention)",
+			input: "\x1b[?25l",
+			want:  "",
+		},
+		{
+			name:  "show cursor stripped",
+			input: "\x1b[?25h",
+			want:  "",
+		},
+		{
+			name:  "cursor position stripped",
+			input: "\x1b[1;1H",
+			want:  "",
+		},
+		{
+			name:  "erase display stripped",
+			input: "\x1b[2J",
+			want:  "",
+		},
+		{
+			name:  "OSC title sequence stripped",
+			input: "\x1b]0;title\x07rest",
+			want:  "rest",
+		},
+		{
+			name:  "OSC with string terminator stripped",
+			input: "\x1b]2;title\x1b\\rest",
+			want:  "rest",
+		},
+		{
+			name:  "other two-byte ESC sequence stripped",
+			input: "\x1b=text",
+			want:  "text",
+		},
+		{
+			name:  "text preserved between stripped sequences",
+			input: "\x1b[31mhello\x1b[0m world",
+			want:  "hello world",
+		},
+		{
+			name:  "alternate screen escape stripped",
+			input: "\x1b[?1049htext\x1b[?1049l",
+			want:  "text",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripANSI(tt.input)
+			if got != tt.want {
+				t.Errorf("stripANSI(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStripVTProblematic(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []byte
+		want  []byte
+	}{
+		{
+			name:  "plain text passes through",
+			input: []byte("hello world"),
+			want:  []byte("hello world"),
+		},
+		{
+			name:  "normal CSI erase screen passes through",
+			input: []byte("\x1b[2J"),
+			want:  []byte("\x1b[2J"),
+		},
+		{
+			name:  "normal CSI color passes through",
+			input: []byte("\x1b[31mred\x1b[0m"),
+			want:  []byte("\x1b[31mred\x1b[0m"),
+		},
+		{
+			name:  "normal CSI cursor move passes through",
+			input: []byte("\x1b[1;1H"),
+			want:  []byte("\x1b[1;1H"),
+		},
+		{
+			// kitty keyboard protocol: CSI > 1 u  (enable keyboard enhancement)
+			name:  "CSI > 1 u stripped",
+			input: []byte("\x1b[>1u"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard protocol: CSI < u  (disable keyboard enhancement)
+			name:  "CSI < u stripped",
+			input: []byte("\x1b[<u"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard: CSI > 4;2 m  (modifyOtherKeys)
+			name:  "CSI > 4;2 m stripped",
+			input: []byte("\x1b[>4;2m"),
+			want:  []byte{},
+		},
+		{
+			// kitty keyboard: CSI = 1 u  (push flags)
+			name:  "CSI = 1 u stripped",
+			input: []byte("\x1b[=1u"),
+			want:  []byte{},
+		},
+		{
+			// kitty sequence surrounded by normal output
+			name:  "kitty sequence stripped from surrounding text",
+			input: []byte("before\x1b[>1uafter"),
+			want:  []byte("beforeafter"),
+		},
+		{
+			// multiple problematic sequences interleaved with normal ones
+			name:  "multiple sequences mixed",
+			input: []byte("\x1b[2J\x1b[>1u\x1b[H\x1b[<u\x1b[31m"),
+			want:  []byte("\x1b[2J\x1b[H\x1b[31m"),
+		},
+		{
+			name:  "empty input",
+			input: []byte{},
+			want:  []byte{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripVTProblematic(tt.input)
+			if string(got) != string(tt.want) {
+				t.Errorf("stripVTProblematic(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
 }

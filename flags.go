@@ -44,3 +44,19 @@ var messageFlag = cli.StringFlag{
 	Name:  "message, m",
 	Usage: "Custom error message on timeout",
 }
+
+var typeModeFlag = cli.BoolFlag{
+	Name:  "type",
+	Usage: "Send input character by character (simulates typing)",
+}
+
+var typeDelayFlag = cli.IntFlag{
+	Name:  "delay, d",
+	Value: 50,
+	Usage: "Milliseconds between characters when using --type",
+}
+
+var noEnterFlag = cli.BoolFlag{
+	Name:  "no-enter",
+	Usage: "Do not send a newline after the input",
+}

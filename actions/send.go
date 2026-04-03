@@ -34,11 +34,14 @@ func (a *SendAction) Execute(c *cli.Context) error {
 	input := strings.Join(c.Args()[1:], " ")
 
 	resp, err := a.client.Do(domain.DaemonRequest{
-		Type:     domain.ReqSend,
-		ID:       id,
-		Alias:    alias,
-		Input:    input,
-		Redacted: a.redacted,
+		Type:      domain.ReqSend,
+		ID:        id,
+		Alias:     alias,
+		Input:     input,
+		Redacted:  a.redacted,
+		TypeMode:  c.Bool("type"),
+		TypeDelay: c.Int("delay"),
+		NoEnter:   c.Bool("no-enter"),
 	})
 	if err != nil {
 		return err

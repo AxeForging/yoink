@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/rs/zerolog"
@@ -102,6 +103,8 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 	case domain.ReqAttach:
 		ds.handleAttach(conn, req)
 		return
+	case domain.ReqSnapshot:
+		ds.handleSnapshot(conn, req)
 	case domain.ReqKill:
 		ds.handleKill(conn, req)
 	case domain.ReqClean:
@@ -158,7 +161,13 @@ func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 
 func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	if err := ds.pm.SendInput(req.ID, req.Input, req.Redacted); err != nil {
+	opts := SendOptions{
+		Redacted:  req.Redacted,
+		TypeMode:  req.TypeMode,
+		TypeDelay: time.Duration(req.TypeDelay) * time.Millisecond,
+		NoEnter:   req.NoEnter,
+	}
+	if err := ds.pm.SendInput(req.ID, req.Input, opts); err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
@@ -190,6 +199,16 @@ func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
 		}
 	}
 	conn.Close()
+}
+
+func (ds *DaemonServer) handleSnapshot(conn net.Conn, req domain.DaemonRequest) {
+	defer conn.Close()
+	output, err := ds.pm.Snapshot(req.ID)
+	if err != nil {
+		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
+		return
+	}
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Output: output})
 }
 
 func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {

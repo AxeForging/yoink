@@ -437,3 +437,169 @@ func TestIntegration_ProcessExitCode(t *testing.T) {
 		t.Errorf("expected exit code 7, got %d", p.ExitCode)
 	}
 }
+
+func TestIntegration_SendTypeMode(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Spawn cat which echoes back what it receives.
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "cat",
+		Alias:   "typer",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Use the CLI --type flag with a short delay so the test stays fast.
+	out, err := env.run("send", "typer", "type-mode-works", "--type", "--delay", "5")
+	if err != nil {
+		t.Fatalf("send --type failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if !strings.Contains(logResp.Output, "type-mode-works") {
+		t.Errorf("expected 'type-mode-works' in output, got: %q", logResp.Output)
+	}
+}
+
+func TestIntegration_SendNoEnter(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Script reads a line and echoes it back prefixed with "got-".
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'read -r line; echo got-$line'",
+		Alias:   "reader",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Send partial input without newline via --no-enter.
+	_, err := env.run("send", "reader", "hello", "--no-enter")
+	if err != nil {
+		t.Fatalf("send --no-enter failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Process should not have produced "got-" yet.
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if strings.Contains(logResp.Output, "got-") {
+		t.Errorf("did not expect 'got-' before newline was sent, got: %q", logResp.Output)
+	}
+
+	// Now complete with just a newline.
+	_, err = env.run("send", "reader", "")
+	if err != nil {
+		t.Fatalf("send (newline completion) failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp = env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		ID:    1,
+		Lines: 20,
+	})
+	if !strings.Contains(logResp.Output, "got-hello") {
+		t.Errorf("expected 'got-hello' after newline, got: %q", logResp.Output)
+	}
+}
+
+func TestIntegration_Snapshot_PlainProcess(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'printf \"\\033[2J\\033[3;5Hsnap-integration-test\"; sleep 300'",
+		Alias:   "tui",
+	})
+
+	time.Sleep(400 * time.Millisecond)
+
+	out, err := env.run("snapshot", "tui")
+	if err != nil {
+		t.Fatalf("snapshot failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "snap-integration-test") {
+		t.Errorf("expected 'snap-integration-test' in snapshot, got: %q", out)
+	}
+}
+
+func TestIntegration_Snapshot_ByAlias(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'echo alias-snap-check; sleep 300'",
+		Alias:   "checker",
+	})
+
+	time.Sleep(400 * time.Millisecond)
+
+	out, err := env.run("snap", "checker") // test the "snap" alias
+	if err != nil {
+		t.Fatalf("snap alias failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "alias-snap-check") {
+		t.Errorf("expected 'alias-snap-check' in snapshot, got: %q", out)
+	}
+}
+
+func TestIntegration_Snapshot_TopCommand(t *testing.T) {
+	if _, err := exec.LookPath("top"); err != nil {
+		t.Skip("top not available on this system")
+	}
+
+	env := newTestEnv(t)
+
+	// Limit to 18 lines so output stays within the 24-row VT buffer regardless
+	// of how many processes are running. Works on Linux and macOS.
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'",
+		Alias:   "top",
+	})
+
+	// Wait for top to finish its single batch iteration.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(300 * time.Millisecond)
+		listResp := env.sendDaemonRequest(domain.DaemonRequest{Type: domain.ReqList})
+		for _, p := range listResp.Processes {
+			if p.Alias == "top" && p.State == domain.StateDone {
+				goto ready
+			}
+		}
+	}
+	t.Fatal("timed out waiting for top to finish")
+ready:
+
+	out, err := env.run("snapshot", "top")
+	if err != nil {
+		t.Fatalf("snapshot of top failed: %v\noutput: %s", err, out)
+	}
+
+	// top output always contains these fields regardless of platform
+	for _, want := range []string{"PID", "%"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in top snapshot, got: %q", want, out)
+		}
+	}
+
+	// Prove the value: log would give raw escape garbage, snapshot gives clean text.
+	// Verify there are no raw CSI escape sequences in the snapshot output.
+	if strings.Contains(out, "\x1b[") {
+		t.Errorf("snapshot should not contain raw ANSI escape sequences, got: %q", out)
+	}
+}

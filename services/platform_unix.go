@@ -11,8 +11,9 @@ import (
 )
 
 // StartProcessWithPTY starts the command with a pseudo-terminal attached.
+// The PTY size is set to match the VT emulator size in process_manager.go (220×50).
 func StartProcessWithPTY(cmd *exec.Cmd) (*os.File, error) {
-	return pty.Start(cmd)
+	return pty.StartWithSize(cmd, &pty.Winsize{Rows: 50, Cols: 220})
 }
 
 // DaemonSysProcAttr returns SysProcAttr for daemonizing on Unix (new session).
