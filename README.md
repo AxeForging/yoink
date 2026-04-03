@@ -32,6 +32,11 @@ yoink log deploy --lines 100
 # Show only new lines since last --new call
 yoink log deploy --new
 
+# Render the current screen of any process — works correctly for TUI apps
+# (yoink log gives raw escape garbage for TUIs; snapshot renders the actual frame)
+yoink snapshot htop
+yoink snap htop          # short alias
+
 # Send input to a process waiting for confirmation
 yoink send deploy "y"
 
@@ -78,6 +83,7 @@ yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open f
 - **ls**: Lists all processes with state (running/done/failed), PID, exit code
 - **log**: Shows buffered output (last 1000 lines kept per process). Use `--new` to see only lines since the last `--new` call
 - **wait**: Polls a process until it finishes, streaming new output to stdout on each cycle. Exits 0 on success, propagates the process exit code on failure, or exits 124 on timeout (matches GNU `timeout` convention). Flags: `--timeout` (seconds, 0=forever), `--poll` (seconds, default 2), `--message` (custom timeout error)
+- **snapshot** (`snap`): Renders the current VT100 screen of a process as plain text. Unlike `log`, this correctly handles TUI applications (htop, vim, Claude, etc.) by replaying their escape sequences through a VT100 emulator and returning only the rendered content. Works on both running and finished processes
 - **send**: Writes text to the process stdin (fire-and-forget). Flags: `--type` (character by character), `--delay` (ms between chars, default 50), `--no-enter` (omit trailing newline)
 - **send-redacted**: Same as send, but input is masked in logs. Supports the same `--type`/`--delay`/`--no-enter` flags
 - **attach**: Bridges your terminal to the process PTY for full interactive control
@@ -92,6 +98,7 @@ The daemon auto-starts when needed and stores its socket at `~/.yoink/yoink.sock
 |---------|-------|-------|---------|
 | run/ls/log/wait/send/send-redacted/kill/clean | Yes | Yes | Planned |
 | send --type / --delay / --no-enter | Yes | Yes | Planned |
+| snapshot (VT100 screen render) | Yes | Yes | Planned |
 | attach (PTY reattach) | Yes | Yes | Planned |
 
 ## Development

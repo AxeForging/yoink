@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/creack/pty v1.1.24
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/rs/zerolog v1.34.0
 	github.com/urfave/cli v1.22.17
 	golang.org/x/term v0.41.0

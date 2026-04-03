@@ -103,6 +103,8 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 	case domain.ReqAttach:
 		ds.handleAttach(conn, req)
 		return
+	case domain.ReqSnapshot:
+		ds.handleSnapshot(conn, req)
 	case domain.ReqKill:
 		ds.handleKill(conn, req)
 	case domain.ReqClean:
@@ -197,6 +199,16 @@ func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
 		}
 	}
 	conn.Close()
+}
+
+func (ds *DaemonServer) handleSnapshot(conn net.Conn, req domain.DaemonRequest) {
+	defer conn.Close()
+	output, err := ds.pm.Snapshot(req.ID)
+	if err != nil {
+		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
+		return
+	}
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Output: output})
 }
 
 func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {

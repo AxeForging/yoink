@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AxeForging/yoink/domain"
+	"github.com/hinshun/vt10x"
 )
 
 type managedProcess struct {
@@ -17,6 +18,7 @@ type managedProcess struct {
 	pty    io.ReadWriteCloser
 	cmd    *exec.Cmd
 	buffer *RingBuffer
+	vt     vt10x.Terminal // VT100 emulator for snapshot support
 
 	attachMu  sync.Mutex
 	attachOut io.Writer
@@ -80,6 +82,7 @@ func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
 		pty:    ptmx,
 		cmd:    cmd,
 		buffer: buf,
+		vt:     vt10x.New(vt10x.WithSize(80, 24)),
 	}
 
 	pm.mu.Lock()
@@ -124,6 +127,8 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 				mp.attachOut.Write(data) //nolint:errcheck
 			}
 			mp.attachMu.Unlock()
+
+			mp.vt.Write(data) //nolint:errcheck
 
 			partial += string(data)
 			for {
@@ -301,6 +306,38 @@ func FormatLogEntries(entries []domain.LogEntry) string {
 		lines[i] = fmt.Sprintf("[%s] %s", e.Source, text)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// Snapshot returns the current rendered screen of the process as plain text.
+// It works for both running and finished processes, and correctly handles TUI
+// applications by replaying their escape sequences through a VT100 emulator.
+func (pm *ProcessManager) Snapshot(id int) (string, error) {
+	pm.mu.RLock()
+	mp, ok := pm.processes[id]
+	pm.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("process %d not found", id)
+	}
+	return renderScreen(mp.vt), nil
+}
+
+// renderScreen renders the VT100 terminal state into clean plain text,
+// trimming trailing whitespace per line and trailing blank lines.
+func renderScreen(term vt10x.Terminal) string {
+	raw := term.String() // String() locks the terminal internally
+	lines := strings.Split(raw, "\n")
+
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+
+	// Drop trailing blank lines
+	end := len(lines)
+	for end > 0 && lines[end-1] == "" {
+		end--
+	}
+
+	return strings.Join(lines[:end], "\n")
 }
 
 // Kill sends a signal to the process. Use force=true for SIGKILL.

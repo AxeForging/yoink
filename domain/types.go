@@ -50,6 +50,7 @@ const (
 	ReqKill     RequestType = "kill"
 	ReqClean    RequestType = "clean"
 	ReqShutdown RequestType = "shutdown"
+	ReqSnapshot RequestType = "snapshot"
 )
 
 // DaemonRequest is sent from client to daemon over the Unix socket.

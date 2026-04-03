@@ -3,6 +3,7 @@
 package services
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -640,4 +641,182 @@ func TestProcessManager_TypeMode_NoEnter_Combined(t *testing.T) {
 	}
 
 	waitForOutput(t, pm, id, "got-combo", 5*time.Second)
+}
+
+// --- Snapshot tests ---
+
+func TestProcessManager_Snapshot_PlainText(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// A plain process with no TUI — snapshot should still show its output.
+	id, err := pm.Spawn("sh -c 'echo hello-snap; sleep 300'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "hello-snap", 5*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "hello-snap") {
+		t.Errorf("expected 'hello-snap' in snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_PositionedText(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Use ANSI cursor positioning — yoink log would show raw escape garbage,
+	// but snapshot should give clean rendered text at the correct coordinates.
+	id, err := pm.Spawn(`sh -c 'printf "\033[2J\033[3;5Hyoink-tui-test\033[5;1Hsecond-line"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "yoink-tui-test") {
+		t.Errorf("expected 'yoink-tui-test' at row 3 in snapshot, got:\n%s", snap)
+	}
+	if !strings.Contains(snap, "second-line") {
+		t.Errorf("expected 'second-line' at row 5 in snapshot, got:\n%s", snap)
+	}
+
+	// Verify positioning: "yoink-tui-test" should appear before "second-line"
+	lines := strings.Split(snap, "\n")
+	row3, row5 := -1, -1
+	for i, line := range lines {
+		if strings.Contains(line, "yoink-tui-test") {
+			row3 = i
+		}
+		if strings.Contains(line, "second-line") {
+			row5 = i
+		}
+	}
+	if row3 < 0 || row5 < 0 || row3 >= row5 {
+		t.Errorf("expected 'yoink-tui-test' (row %d) before 'second-line' (row %d)", row3, row5)
+	}
+}
+
+func TestProcessManager_Snapshot_ClearAndRedraw(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Process that draws one thing, then clears and draws something else.
+	// Snapshot should reflect the FINAL screen state, not the history.
+	// yoink log would show both; snapshot shows only what's currently rendered.
+	id, err := pm.Spawn(`sh -c 'printf "initial-content"; sleep 0.2; printf "\033[2Jfinal-content"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(600 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "final-content") {
+		t.Errorf("expected 'final-content' in snapshot, got:\n%s", snap)
+	}
+	if strings.Contains(snap, "initial-content") {
+		t.Errorf("expected 'initial-content' to be cleared from snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_FinishedProcess(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Snapshot works on finished processes — the VT holds the last frame.
+	id, err := pm.Spawn("echo snap-after-exit", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot of finished process failed: %v", err)
+	}
+	if !strings.Contains(snap, "snap-after-exit") {
+		t.Errorf("expected 'snap-after-exit' in snapshot of finished process, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_NotFound(t *testing.T) {
+	pm := NewProcessManager(100)
+	_, err := pm.Snapshot(999)
+	if err == nil {
+		t.Error("expected error for non-existent process")
+	}
+}
+
+func TestProcessManager_Snapshot_ScreenDimensions(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// VT emulator is 80×24. Content placed beyond col 80 or row 24 is clipped.
+	// Content within bounds must be reachable via snapshot.
+	id, err := pm.Spawn(`sh -c 'printf "\033[24;1Hlast-row"; sleep 300'`, "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if !strings.Contains(snap, "last-row") {
+		t.Errorf("expected text at last row (row 24) in snapshot, got:\n%s", snap)
+	}
+}
+
+func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
+	// top is the canonical TUI process — log gives garbage, snapshot gives clean text.
+	if _, err := exec.LookPath("top"); err != nil {
+		t.Skip("top not available on this system")
+	}
+
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Limit to 18 lines so output fits within the 24-row VT buffer regardless
+	// of how many processes are running. Works on both Linux (top -b -n 1) and
+	// macOS (top -l 1). The column-header row (with "PID") is always within
+	// the first 10 lines of top output, well inside the 18-line window.
+	id, err := pm.Spawn("sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForState(t, pm, id, domain.StateDone, 10*time.Second)
+
+	snap, err := pm.Snapshot(id)
+	if err != nil {
+		t.Fatalf("Snapshot of top failed: %v", err)
+	}
+
+	// top output always contains these header fields within the first 18 lines
+	for _, want := range []string{"PID", "%"} {
+		if !strings.Contains(snap, want) {
+			t.Errorf("expected %q in top snapshot, got:\n%s", want, snap)
+		}
+	}
+
+	// Key value: no raw ANSI escape sequences in snapshot output
+	if strings.Contains(snap, "\x1b[") {
+		t.Errorf("snapshot must not contain raw ANSI escape sequences, got:\n%s", snap)
+	}
 }

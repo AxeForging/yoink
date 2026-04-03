@@ -36,6 +36,7 @@ func main() {
 	logAction := actions.NewLogAction(client)
 	sendAction := actions.NewSendAction(client, false)
 	sendRedactedAction := actions.NewSendAction(client, true)
+	snapshotAction := actions.NewSnapshotAction(client)
 	attachAction := actions.NewAttachAction(client)
 	waitAction := actions.NewWaitAction(client)
 	killAction := actions.NewKillAction(client)
@@ -100,6 +101,12 @@ func main() {
 			Usage: "Send input to a process (redacted in logs)",
 			Flags: []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag},
 			Action: sendRedactedAction.Execute,
+		},
+		{
+			Name:    "snapshot",
+			Aliases: []string{"snap"},
+			Usage:   "Render the current VT100 screen of a process as plain text",
+			Action:  snapshotAction.Execute,
 		},
 		{
 			Name:    "attach",
