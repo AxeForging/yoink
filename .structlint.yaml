@@ -8,6 +8,7 @@ dir_structure:
     - "helpers/**"
     - "integration/**"
     - "docs/**"
+    - "scripts/**"
     - ".github/**"
     - ".claude/**"
   disallowedPaths:
@@ -27,6 +28,7 @@ file_naming_pattern:
     - "*.go"
     - "*.mod"
     - "*.sum"
+    - "*.sh"
     - "*.yaml"
     - "*.yml"
     - "*.json"
