@@ -93,7 +93,7 @@ func main() {
 			Name:    "send",
 			Aliases: []string{"s"},
 			Usage:   "Send input text to a running process",
-			Flags:   []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag},
+			Flags:   []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag, keyFlag},
 			Action:  sendAction.Execute,
 		},
 		{

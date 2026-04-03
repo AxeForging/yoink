@@ -60,3 +60,8 @@ var noEnterFlag = cli.BoolFlag{
 	Name:  "no-enter",
 	Usage: "Do not send a newline after the input",
 }
+
+var keyFlag = cli.StringFlag{
+	Name:  "key, k",
+	Usage: "Send a named key sequence instead of text (e.g. up, down, ctrl+c, f1, pageup)",
+}
