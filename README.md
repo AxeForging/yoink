@@ -49,6 +49,12 @@ yoink send deploy "hello world" --type --delay 100
 # Send without pressing Enter (useful for prompts that read a single key)
 yoink send deploy "y" --no-enter
 
+# Send a named key sequence (arrow keys, ctrl combos, function keys, etc.)
+yoink send deploy --key up
+yoink send deploy --key ctrl+c
+yoink send deploy --key pagedown
+yoink send deploy --key f5
+
 # Send sensitive input (passwords, tokens) — hidden from logs
 yoink send-redacted deploy "my-secret-token"
 
@@ -84,8 +90,8 @@ yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open f
 - **log**: Shows buffered output (last 1000 lines kept per process). Use `--new` to see only lines since the last `--new` call
 - **wait**: Polls a process until it finishes, streaming new output to stdout on each cycle. Exits 0 on success, propagates the process exit code on failure, or exits 124 on timeout (matches GNU `timeout` convention). Flags: `--timeout` (seconds, 0=forever), `--poll` (seconds, default 2), `--message` (custom timeout error)
 - **snapshot** (`snap`): Renders the current VT100 screen of a process as plain text. Unlike `log`, this correctly handles TUI applications (htop, vim, Claude, etc.) by replaying their escape sequences through a VT100 emulator and returning only the rendered content. Works on both running and finished processes
-- **send**: Writes text to the process stdin (fire-and-forget). Flags: `--type` (character by character), `--delay` (ms between chars, default 50), `--no-enter` (omit trailing newline)
-- **send-redacted**: Same as send, but input is masked in logs. Supports the same `--type`/`--delay`/`--no-enter` flags
+- **send**: Writes text to the process stdin (fire-and-forget). Flags: `--type` (character by character), `--delay` (ms between chars, default 50), `--no-enter` (omit trailing newline), `--key` (send a named key sequence — e.g. `up`, `down`, `ctrl+c`, `f1`, `pageup`; implies `--no-enter`)
+- **send-redacted**: Same as send, but input is masked in logs. Supports the same flags
 - **attach**: Bridges your terminal to the process PTY for full interactive control
 - **kill**: Sends SIGTERM (or SIGKILL with --force)
 - **clean**: Removes finished processes from the list
@@ -97,7 +103,7 @@ The daemon auto-starts when needed and stores its socket at `~/.yoink/yoink.sock
 | Feature | Linux | macOS | Windows |
 |---------|-------|-------|---------|
 | run/ls/log/wait/send/send-redacted/kill/clean | Yes | Yes | Planned |
-| send --type / --delay / --no-enter | Yes | Yes | Planned |
+| send --type / --delay / --no-enter / --key | Yes | Yes | Planned |
 | snapshot (VT100 screen render) | Yes | Yes | Planned |
 | attach (PTY reattach) | Yes | Yes | Planned |
 

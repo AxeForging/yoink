@@ -9,6 +9,25 @@ import (
 	"github.com/urfave/cli"
 )
 
+// resolveInput returns the input string and whether no-enter should be implied,
+// handling both plain text and --key mode.
+func resolveInput(c *cli.Context) (input string, noEnter bool, err error) {
+	keyName := c.String("key")
+	hasText := c.NArg() >= 2
+
+	if keyName != "" && hasText {
+		return "", false, fmt.Errorf("--key and text input are mutually exclusive")
+	}
+	if keyName != "" {
+		seq, err := services.ResolveKey(keyName)
+		if err != nil {
+			return "", false, err
+		}
+		return seq, true, nil // key sequences never get a trailing newline
+	}
+	return strings.Join(c.Args()[1:], " "), c.Bool("no-enter"), nil
+}
+
 // SendAction sends input text to a running process.
 type SendAction struct {
 	client   *services.ClientService
@@ -22,16 +41,21 @@ func NewSendAction(client *services.ClientService, redacted bool) *SendAction {
 
 // Execute sends the given text as stdin to the process.
 func (a *SendAction) Execute(c *cli.Context) error {
-	if c.NArg() < 2 {
+	keyName := c.String("key")
+	if c.NArg() < 1 || (c.NArg() < 2 && keyName == "") {
 		cmd := "send"
 		if a.redacted {
 			cmd = "send-redacted"
 		}
-		return fmt.Errorf("usage: yoink %s <id|alias> <input>", cmd)
+		return fmt.Errorf("usage: yoink %s <id|alias> <input> [--key <name>]", cmd)
 	}
 
 	id, alias := parseProcessRef(c.Args().First())
-	input := strings.Join(c.Args()[1:], " ")
+
+	input, noEnter, err := resolveInput(c)
+	if err != nil {
+		return err
+	}
 
 	resp, err := a.client.Do(domain.DaemonRequest{
 		Type:      domain.ReqSend,
@@ -41,7 +65,7 @@ func (a *SendAction) Execute(c *cli.Context) error {
 		Redacted:  a.redacted,
 		TypeMode:  c.Bool("type"),
 		TypeDelay: c.Int("delay"),
-		NoEnter:   c.Bool("no-enter"),
+		NoEnter:   noEnter,
 	})
 	if err != nil {
 		return err
