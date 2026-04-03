@@ -5,11 +5,13 @@
 yoink uses a daemon/client architecture:
 
 ```
-yoink run "cmd"  -->  yoinkd (daemon)  -->  PTY --> child process
-yoink ls         -->  yoinkd           -->  process table
-yoink log 1      -->  yoinkd           -->  ring buffer (last N lines)
-yoink send 1 "y" -->  yoinkd           -->  write to PTY fd
-yoink attach 1   -->  yoinkd           -->  bridge terminal <-> PTY
+yoink run "cmd"               -->  yoinkd (daemon)  -->  PTY --> child process
+yoink ls                      -->  yoinkd           -->  process table
+yoink log 1                   -->  yoinkd           -->  ring buffer (last N lines)
+yoink send 1 "y"              -->  yoinkd           -->  write to PTY fd (whole string + newline)
+yoink send 1 "y" --type       -->  yoinkd           -->  write to PTY fd char by char with delay
+yoink send 1 "y" --no-enter   -->  yoinkd           -->  write to PTY fd without trailing newline
+yoink attach 1                -->  yoinkd           -->  bridge terminal <-> PTY
 ```
 
 ### Daemon
