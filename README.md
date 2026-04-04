@@ -83,6 +83,8 @@ yoink kill 1 --force    # SIGKILL
 yoink clean
 ```
 
+> **More examples?** See [EXAMPLES.md](EXAMPLES.md) for real-world use cases — CI pipelines, interactive prompts, TUI monitoring, secret handling, and more.
+
 ## How it works
 
 yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open for each background process. The CLI client communicates with the daemon over a Unix socket.
