@@ -37,6 +37,7 @@ file_naming_pattern:
     - "Makefile"
     - ".gitignore"
     - ".goreleaser.yml"
+    - "*.gif"
     - "LICENSE"
   disallowed:
     - "*.env*"
