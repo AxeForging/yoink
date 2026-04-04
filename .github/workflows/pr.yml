@@ -1,8 +1,6 @@
 name: PR
 
 on:
-  push:
-    branches: [main]
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches:
@@ -14,7 +12,6 @@ permissions:
 
 jobs:
   title:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Validate PR title follows Conventional Commits
@@ -76,7 +73,6 @@ jobs:
           govulncheck ./...
 
   e2e:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -364,7 +360,6 @@ jobs:
           rm -f "$YOINK_SOCK"
 
   review:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -379,7 +374,6 @@ jobs:
           REVIEW_RULES: concise
 
   validate:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
