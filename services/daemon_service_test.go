@@ -376,6 +376,9 @@ func TestDaemon_OperationsByAlias(t *testing.T) {
 	if !sendResp.Success {
 		t.Fatalf("send via alias failed: %s", sendResp.Error)
 	}
+	if sendResp.ID != 1 {
+		t.Errorf("expected send response to include resolved ID 1, got %d", sendResp.ID)
+	}
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -388,6 +391,9 @@ func TestDaemon_OperationsByAlias(t *testing.T) {
 	if !logResp.Success {
 		t.Fatalf("log via alias failed: %s", logResp.Error)
 	}
+	if logResp.ID != 1 {
+		t.Errorf("expected log response to include resolved ID 1, got %d", logResp.ID)
+	}
 	if !strings.Contains(logResp.Output, "alias-test-input") {
 		t.Errorf("expected 'alias-test-input' in output, got: %q", logResp.Output)
 	}
@@ -399,6 +405,9 @@ func TestDaemon_OperationsByAlias(t *testing.T) {
 	})
 	if !killResp.Success {
 		t.Fatalf("kill via alias failed: %s", killResp.Error)
+	}
+	if killResp.ID != 1 {
+		t.Errorf("expected kill response to include resolved ID 1, got %d", killResp.ID)
 	}
 }
 

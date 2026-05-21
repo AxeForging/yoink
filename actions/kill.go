@@ -43,6 +43,6 @@ func (a *KillAction) Execute(c *cli.Context) error {
 	if c.Bool("force") {
 		sig = "SIGKILL"
 	}
-	fmt.Printf("Sent %s to process %d\n", sig, id)
+	fmt.Printf("Sent %s to process %d\n", sig, responseID(resp.ID, id))
 	return nil
 }

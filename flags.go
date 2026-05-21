@@ -61,6 +61,11 @@ var noEnterFlag = cli.BoolFlag{
 	Usage: "Do not send a newline after the input",
 }
 
+var submitFlag = cli.BoolFlag{
+	Name:  "submit",
+	Usage: "Submit text with carriage-return Enter (CR), useful for TUIs like Claude",
+}
+
 var keyFlag = cli.StringFlag{
 	Name:  "key, k",
 	Usage: "Send a named key sequence instead of text (e.g. up, down, ctrl+c, f1, pageup)",

@@ -241,6 +241,7 @@ type SendOptions struct {
 	TypeMode  bool          // send character by character
 	TypeDelay time.Duration // delay between characters in type mode
 	NoEnter   bool          // omit the trailing newline
+	Submit    bool          // append carriage-return Enter instead of newline
 }
 
 // SendInput writes text to the process PTY.
@@ -285,6 +286,10 @@ func (pm *ProcessManager) SendInput(id int, input string, opts SendOptions) erro
 		}
 	}
 
+	if opts.Submit {
+		_, err := mp.pty.Write([]byte("\r"))
+		return err
+	}
 	if !opts.NoEnter {
 		_, err := mp.pty.Write([]byte("\n"))
 		return err

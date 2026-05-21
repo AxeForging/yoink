@@ -12,6 +12,7 @@ yoink snapshot 1              -->  yoinkd           -->  VT100 emulator framebuf
 yoink send 1 "y"              -->  yoinkd           -->  write to PTY fd (whole string + newline)
 yoink send 1 "y" --type       -->  yoinkd           -->  write to PTY fd char by char with delay
 yoink send 1 "y" --no-enter   -->  yoinkd           -->  write to PTY fd without trailing newline
+yoink send 1 "y" --submit     -->  yoinkd           -->  write to PTY fd with carriage-return Enter
 yoink send 1 --key up         -->  yoinkd           -->  write ESC[A to PTY fd (named key sequence)
 yoink attach 1                -->  yoinkd           -->  bridge terminal <-> PTY
 ```

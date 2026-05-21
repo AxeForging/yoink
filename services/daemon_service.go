@@ -156,7 +156,7 @@ func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
-	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Output: output})
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID, Output: output})
 }
 
 func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
@@ -166,12 +166,13 @@ func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
 		TypeMode:  req.TypeMode,
 		TypeDelay: time.Duration(req.TypeDelay) * time.Millisecond,
 		NoEnter:   req.NoEnter,
+		Submit:    req.Submit,
 	}
 	if err := ds.pm.SendInput(req.ID, req.Input, opts); err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
-	ds.sendResponse(conn, domain.DaemonResponse{Success: true})
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID})
 }
 
 func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
@@ -182,7 +183,7 @@ func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
 		return
 	}
 
-	ds.sendResponse(conn, domain.DaemonResponse{Success: true})
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID})
 
 	ds.pm.AttachOutput(req.ID, conn) //nolint:errcheck
 	defer ds.pm.DetachOutput(req.ID)
@@ -208,7 +209,7 @@ func (ds *DaemonServer) handleSnapshot(conn net.Conn, req domain.DaemonRequest) 
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
-	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Output: output})
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID, Output: output})
 }
 
 func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {
@@ -217,7 +218,7 @@ func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
 	}
-	ds.sendResponse(conn, domain.DaemonResponse{Success: true})
+	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID})
 }
 
 func (ds *DaemonServer) handleClean(conn net.Conn) {
