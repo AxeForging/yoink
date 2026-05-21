@@ -583,6 +583,24 @@ func TestProcessManager_NoEnter_NoLineEcho(t *testing.T) {
 	waitForOutput(t, pm, id, "got-partial", 5*time.Second)
 }
 
+func TestProcessManager_SubmitUsesCarriageReturn(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'", "")
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	if err := pm.SendInput(id, "x", SendOptions{Submit: true}); err != nil {
+		t.Fatalf("SendInput (submit) failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, "78 0d", 5*time.Second)
+}
+
 func TestProcessManager_TypeMode_WithRedaction(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()

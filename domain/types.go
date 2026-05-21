@@ -67,6 +67,7 @@ type DaemonRequest struct {
 	TypeMode  bool        `json:"type_mode,omitempty"`
 	TypeDelay int         `json:"type_delay,omitempty"` // milliseconds between characters
 	NoEnter   bool        `json:"no_enter,omitempty"`
+	Submit    bool        `json:"submit,omitempty"`
 }
 
 // DaemonResponse is sent from daemon to client over the Unix socket.

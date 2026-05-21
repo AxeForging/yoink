@@ -198,15 +198,15 @@ You want to script interactions with a conversational CLI (Claude, ChatGPT CLI, 
 yoink run --alias claude "claude"
 sleep 3
 
-# Send a prompt with realistic typing
-yoink send claude "Explain this error: ConnectionRefused on port 5432" --type --delay 30
+# Send a prompt with realistic typing and submit it with TUI-style Enter
+yoink send claude "Explain this error: ConnectionRefused on port 5432" --type --delay 30 --submit
 
 # Wait for response to appear, then read it
 sleep 10
 yoink snapshot claude
 
 # Send follow-up
-yoink send claude "How do I fix it?" --type
+yoink send claude "How do I fix it?" --type --submit
 
 # Navigate through output
 yoink send claude --key pageup
@@ -635,6 +635,7 @@ yoink clean
 | Run in background | `yoink run --alias name "command"` |
 | Check new output | `yoink log name --new` |
 | Send input | `yoink send name "text"` |
+| Submit TUI prompt | `yoink send name "text" --submit` |
 | Send secret input | `yoink send-redacted name "$SECRET"` |
 | Send key combo | `yoink send name --key ctrl+c` |
 | Wait with timeout | `yoink wait name --timeout 60` |

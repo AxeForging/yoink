@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-
 	"github.com/AxeForging/yoink/domain"
 )
 
@@ -229,6 +228,26 @@ func TestIntegration_KillAndClean(t *testing.T) {
 	listResp := env.sendDaemonRequest(domain.DaemonRequest{Type: domain.ReqList})
 	if len(listResp.Processes) != 0 {
 		t.Errorf("expected 0 processes after clean, got %d", len(listResp.Processes))
+	}
+}
+
+func TestIntegration_KillAliasPrintsResolvedID(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+		Alias:   "sleepy",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	out, err := env.run("kill", "sleepy")
+	if err != nil {
+		t.Fatalf("kill by alias failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "process 1") {
+		t.Fatalf("expected kill output to include resolved process ID, got: %q", out)
 	}
 }
 
@@ -513,6 +532,37 @@ func TestIntegration_SendNoEnter(t *testing.T) {
 	})
 	if !strings.Contains(logResp.Output, "got-hello") {
 		t.Errorf("expected 'got-hello' after newline, got: %q", logResp.Output)
+	}
+}
+
+func TestIntegration_SendSubmitUsesCarriageReturn(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'",
+		Alias:   "raw-reader",
+	})
+
+	time.Sleep(300 * time.Millisecond)
+
+	out, err := env.run("send", "raw-reader", "x", "--submit")
+	if err != nil {
+		t.Fatalf("send --submit failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "process 1") {
+		t.Fatalf("expected send output to include resolved process ID, got: %q", out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "raw-reader",
+		Lines: 20,
+	})
+	if !strings.Contains(logResp.Output, "78 0d") {
+		t.Errorf("expected --submit to send CR after text, got: %q", logResp.Output)
 	}
 }
 

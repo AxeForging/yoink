@@ -86,20 +86,20 @@ func main() {
 			Aliases:   []string{"w"},
 			ArgsUsage: "<id|alias>...",
 			Usage:     "Wait for one or more processes to finish, streaming output (exit 124 on timeout)",
-			Flags:   []cli.Flag{timeoutFlag, pollFlag, messageFlag},
-			Action:  waitAction.Execute,
+			Flags:     []cli.Flag{timeoutFlag, pollFlag, messageFlag},
+			Action:    waitAction.Execute,
 		},
 		{
 			Name:    "send",
 			Aliases: []string{"s"},
 			Usage:   "Send input text to a running process",
-			Flags:   []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag, keyFlag},
+			Flags:   []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag, submitFlag, keyFlag},
 			Action:  sendAction.Execute,
 		},
 		{
-			Name:  "send-redacted",
-			Usage: "Send input to a process (redacted in logs)",
-			Flags: []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag},
+			Name:   "send-redacted",
+			Usage:  "Send input to a process (redacted in logs)",
+			Flags:  []cli.Flag{typeModeFlag, typeDelayFlag, noEnterFlag, submitFlag},
 			Action: sendRedactedAction.Execute,
 		},
 		{
@@ -122,8 +122,8 @@ func main() {
 			Action:  killAction.Execute,
 		},
 		{
-			Name:  "clean",
-			Usage: "Remove finished/failed processes from the list",
+			Name:   "clean",
+			Usage:  "Remove finished/failed processes from the list",
 			Action: cleanAction.Execute,
 		},
 		{

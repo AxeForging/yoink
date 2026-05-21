@@ -7,12 +7,13 @@ import (
 	"github.com/urfave/cli"
 )
 
-func newSendContext(t *testing.T, args []string, key string, noEnter bool) *cli.Context {
+func newSendContext(t *testing.T, args []string, key string, noEnter, submit bool) *cli.Context {
 	t.Helper()
 	app := cli.NewApp()
 	set := flag.NewFlagSet("send", flag.ContinueOnError)
 	set.String("key", "", "")
 	set.Bool("no-enter", false, "")
+	set.Bool("submit", false, "")
 	if err := set.Parse(args); err != nil {
 		t.Fatalf("flag parse error: %v", err)
 	}
@@ -26,6 +27,11 @@ func newSendContext(t *testing.T, args []string, key string, noEnter bool) *cli.
 			t.Fatalf("set no-enter flag: %v", err)
 		}
 	}
+	if submit {
+		if err := set.Set("submit", "true"); err != nil {
+			t.Fatalf("set submit flag: %v", err)
+		}
+	}
 	return cli.NewContext(app, set, nil)
 }
 
@@ -35,8 +41,10 @@ func TestResolveInput(t *testing.T) {
 		args        []string // positional args (alias + optional text)
 		key         string
 		noEnter     bool
+		submit      bool
 		wantInput   string
 		wantNoEnter bool
+		wantSubmit  bool
 		wantErr     bool
 	}{
 		// Plain text: returns text, respects --no-enter
@@ -58,6 +66,14 @@ func TestResolveInput(t *testing.T) {
 			args:        []string{"myproc", "hello", "world"},
 			wantInput:   "hello world",
 			wantNoEnter: false,
+		},
+		{
+			name:        "plain text with submit",
+			args:        []string{"myproc", "hello"},
+			submit:      true,
+			wantInput:   "hello",
+			wantNoEnter: false,
+			wantSubmit:  true,
 		},
 		{
 			name:        "no text args returns empty string",
@@ -96,6 +112,20 @@ func TestResolveInput(t *testing.T) {
 			key:     "up",
 			wantErr: true,
 		},
+		{
+			name:    "--no-enter and --submit are mutually exclusive",
+			args:    []string{"myproc", "sometext"},
+			noEnter: true,
+			submit:  true,
+			wantErr: true,
+		},
+		{
+			name:    "--key and --submit are mutually exclusive",
+			args:    []string{"myproc"},
+			key:     "enter",
+			submit:  true,
+			wantErr: true,
+		},
 
 		// Error: unknown key
 		{
@@ -108,11 +138,11 @@ func TestResolveInput(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := newSendContext(t, tt.args, tt.key, tt.noEnter)
-			input, noEnter, err := resolveInput(ctx)
+			ctx := newSendContext(t, tt.args, tt.key, tt.noEnter, tt.submit)
+			input, noEnter, submit, err := resolveInput(ctx)
 			if tt.wantErr {
 				if err == nil {
-					t.Errorf("resolveInput() expected error, got input=%q noEnter=%v", input, noEnter)
+					t.Errorf("resolveInput() expected error, got input=%q noEnter=%v submit=%v", input, noEnter, submit)
 				}
 				return
 			}
@@ -124,6 +154,9 @@ func TestResolveInput(t *testing.T) {
 			}
 			if noEnter != tt.wantNoEnter {
 				t.Errorf("noEnter = %v, want %v", noEnter, tt.wantNoEnter)
+			}
+			if submit != tt.wantSubmit {
+				t.Errorf("submit = %v, want %v", submit, tt.wantSubmit)
 			}
 		})
 	}
