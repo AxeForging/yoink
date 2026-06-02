@@ -1,4 +1,8 @@
-# yoink
+<p align="center">
+  <img src="docs/assets/yoink-logo.png" alt="yoink logo" width="180">
+</p>
+
+<h1 align="center">yoink</h1>
 
 Background process manager with interactive I/O. Spawn commands in the background, check their output, send input to hanging processes, and reattach with full terminal control.
 
