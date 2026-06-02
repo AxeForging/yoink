@@ -1,0 +1,72 @@
+name: "Setup yoink"
+description: "Download and install a pinned yoink version, adding it to PATH for later steps"
+author: "AxeForging"
+branding:
+  icon: "terminal"
+  color: "orange"
+inputs:
+  version:
+    description: "yoink version to install (e.g. v0.1.0). Defaults to the action ref, then to the latest release."
+    required: false
+    default: ""
+outputs:
+  version:
+    description: "The resolved yoink version that was installed"
+    value: ${{ steps.install.outputs.version }}
+  path:
+    description: "Absolute path to the installed yoink binary"
+    value: ${{ steps.install.outputs.path }}
+runs:
+  using: "composite"
+  steps:
+    - id: install
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Detect OS
+        case "${{ runner.os }}" in
+          Linux)  OS="linux" ;;
+          macOS)  OS="darwin" ;;
+          *) echo "::error::yoink does not support ${{ runner.os }} runners yet (Linux and macOS only)"; exit 1 ;;
+        esac
+
+        # Detect arch
+        case "${{ runner.arch }}" in
+          X64)   ARCH="amd64" ;;
+          ARM64) ARCH="arm64" ;;
+          *) echo "::error::unsupported runner architecture: ${{ runner.arch }}"; exit 1 ;;
+        esac
+
+        # Resolve version: explicit input -> action ref -> latest release
+        VERSION="${{ inputs.version }}"
+        if [ -z "$VERSION" ]; then
+          VERSION="${{ github.action_ref }}"
+        fi
+        if [ -z "$VERSION" ] || [ "$VERSION" = "main" ]; then
+          VERSION=$(curl -sS -o /dev/null -w '%{redirect_url}' \
+            "https://github.com/AxeForging/yoink/releases/latest" | grep -oE '[^/]+$')
+          echo "Resolved latest version: ${VERSION}"
+        fi
+        if [ -z "$VERSION" ]; then
+          echo "::error::could not resolve a yoink version to install"; exit 1
+        fi
+
+        URL="https://github.com/AxeForging/yoink/releases/download/${VERSION}/yoink-${OS}-${ARCH}.tar.gz"
+        echo "Downloading yoink ${VERSION} for ${OS}-${ARCH}"
+        echo "  $URL"
+
+        TMP="$(mktemp -d)"
+        curl -sSL --fail "$URL" -o "$TMP/yoink.tar.gz"
+        tar -xzf "$TMP/yoink.tar.gz" -C "$TMP"
+
+        INSTALL_DIR="$HOME/.yoink/bin"
+        mkdir -p "$INSTALL_DIR"
+        mv "$TMP/yoink" "$INSTALL_DIR/yoink"
+        chmod +x "$INSTALL_DIR/yoink"
+        rm -rf "$TMP"
+
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "path=${INSTALL_DIR}/yoink" >> "$GITHUB_OUTPUT"
+        echo "yoink ${VERSION} installed to ${INSTALL_DIR}/yoink"

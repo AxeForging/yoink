@@ -59,14 +59,26 @@ release:
   header: |
     ## Installation
 
+    ### One-liner (auto-detects OS/arch)
     ```bash
-    # Linux (amd64)
-    curl -Lo yoink https://github.com/AxeForging/yoink/releases/download/v{{.Version}}/yoink-linux-amd64.tar.gz
-    tar xzf yoink-linux-amd64.tar.gz
-    chmod +x yoink && sudo mv yoink /usr/local/bin/
+    curl -fsSL https://raw.githubusercontent.com/AxeForging/yoink/main/install.sh | sh
+    # pin a version: VERSION={{ .Tag }} sh -c "$(curl -fsSL https://raw.githubusercontent.com/AxeForging/yoink/main/install.sh)"
+    ```
 
-    # macOS (Apple Silicon)
-    curl -Lo yoink https://github.com/AxeForging/yoink/releases/download/v{{.Version}}/yoink-darwin-arm64.tar.gz
-    tar xzf yoink-darwin-arm64.tar.gz
+    ### GitHub Actions
+    ```yaml
+    - uses: AxeForging/yoink@{{ .Tag }}
+    - run: yoink run --alias dev "npm run dev"
+    ```
+
+    ### Manual (pick your arch)
+    ```bash
+    # Linux amd64 — swap the suffix for darwin-arm64, linux-arm64, etc.
+    curl -fsSL https://github.com/AxeForging/yoink/releases/download/{{ .Tag }}/yoink-linux-amd64.tar.gz | tar xz
     chmod +x yoink && sudo mv yoink /usr/local/bin/
+    ```
+
+    ### From source
+    ```bash
+    go install github.com/AxeForging/yoink@{{ .Tag }}
     ```

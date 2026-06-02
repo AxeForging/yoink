@@ -23,13 +23,36 @@ See [Why yoink?](docs/WHY.md) for the deeper positioning and comparisons.
 ## Install
 
 ```bash
+# One-liner — auto-detects your OS/arch, installs the latest release
+curl -fsSL https://raw.githubusercontent.com/AxeForging/yoink/main/install.sh | sh
+
+# Pin a version, or install somewhere else
+VERSION=v0.1.0 YOINK_INSTALL_DIR=~/.local/bin sh -c "$(curl -fsSL https://raw.githubusercontent.com/AxeForging/yoink/main/install.sh)"
+
 # From source
 go install github.com/AxeForging/yoink@latest
-
-# From release
-curl -Lo yoink.tar.gz https://github.com/AxeForging/yoink/releases/latest/download/yoink-linux-amd64.tar.gz
-tar xzf yoink.tar.gz && sudo mv yoink /usr/local/bin/
 ```
+
+Prebuilt binaries for every OS/arch are attached to each [release](https://github.com/AxeForging/yoink/releases/latest).
+
+### Use in CI (GitHub Actions)
+
+Set up a pinned yoink on the runner, then use it across steps:
+
+```yaml
+steps:
+  - uses: AxeForging/yoink@v0.1.0   # pin a release tag (use @main for latest)
+
+  - name: Run a dev server in the background
+    run: yoink run --alias dev "npm run dev"
+
+  - name: Wait for it, then run tests
+    run: |
+      yoink wait dev --timeout 60 --poll 2 || true
+      npm test
+```
+
+The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`. Linux and macOS runners are supported.
 
 ## Quickstart
 
