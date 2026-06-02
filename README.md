@@ -4,9 +4,21 @@
 
 <h1 align="center">yoink</h1>
 
-Background process manager with interactive I/O. Spawn commands in the background, check their output, send input to hanging processes, and reattach with full terminal control.
+Run interactive commands in the background, inspect their output, send input, capture TUI screens, wait on them from scripts, and reattach when you need full control.
+
+`yoink` is a lightweight PTY process manager for developers, CI jobs, automation scripts, and AI-agent workflows. It fills the space between shell background jobs, `tmux`, `expect`, and full process supervisors: every process gets a real terminal, a name, logs, input control, lifecycle state, and a way back in.
 
 ![yoink demo](docs/demo.gif)
+
+## Why yoink?
+
+- Keep long-running commands alive without dedicating a terminal tab.
+- Drive interactive CLIs from scripts with `send`, `send --key`, and `send-redacted`.
+- Read only new output with `log --new`, which is useful for polling and test reports.
+- Render TUI apps with `snapshot` instead of raw escape-sequence logs.
+- Coordinate dev servers, test runners, deploys, tunnels, model servers, and AI coding agents.
+
+See [Why yoink?](docs/WHY.md) for the deeper positioning and comparisons.
 
 ## Install
 
@@ -19,95 +31,55 @@ curl -Lo yoink.tar.gz https://github.com/AxeForging/yoink/releases/latest/downlo
 tar xzf yoink.tar.gz && sudo mv yoink /usr/local/bin/
 ```
 
-## Usage
+## Quickstart
 
 ```bash
-# Spawn a command in the background
-yoink run "make deploy-staging"
-
-# Spawn with an alias for easier reference
+# Start a command under a managed PTY
 yoink run --alias deploy "make deploy-staging"
 
-# List all managed processes
+# Check state and output
 yoink ls
-
-# Check output of a process (by ID or alias)
-yoink log 1
-yoink log deploy --lines 100
-
-# Show only new lines since last --new call
 yoink log deploy --new
 
-# Render the current screen of any process — works correctly for TUI apps
-# (yoink log gives raw escape garbage for TUIs; snapshot renders the actual frame)
-yoink snapshot htop
-yoink snap htop          # short alias
-
-# Send input to a process waiting for confirmation
+# Answer a prompt without reattaching
 yoink send deploy "y"
 
-# Send input character by character (simulates typing — great for asciinema recordings)
-yoink send deploy "hello world" --type
-
-# Control typing speed with --delay <ms> (default 50ms)
-yoink send deploy "hello world" --type --delay 100
-
-# Send without pressing Enter (useful for prompts that read a single key)
-yoink send deploy "y" --no-enter
-
-# Submit text with carriage-return Enter (useful for TUIs like Claude)
-yoink send claude "say only OK" --submit
-
-# Send a named key sequence (arrow keys, ctrl combos, function keys, etc.)
-yoink send deploy --key up
-yoink send deploy --key ctrl+c
-yoink send deploy --key pagedown
-yoink send deploy --key f5
-
-# Send sensitive input (passwords, tokens) — hidden from logs
-yoink send-redacted deploy "my-secret-token"
-
-# Flags work on send-redacted too
-yoink send-redacted deploy "my-secret" --type --delay 80
-
-# Full interactive reattach (Ctrl+] to detach)
-yoink attach deploy
-
-# Wait for a process to finish (streams output, exits with process exit code)
+# Wait from a script, streaming new output
 yoink wait deploy --timeout 300 --poll 5
 
-# Wait for multiple processes at once (fail-fast on first failure)
-yoink wait build install runner-startup --timeout 300
-
-# Wait with custom timeout message
-yoink wait build --timeout 60 --message "Build exceeded 1min budget"
-
-# Kill a process
+# Reattach later, or clean up
+yoink attach deploy      # Ctrl+] detaches
 yoink kill deploy
-yoink kill 1 --force    # SIGKILL
-
-# Remove finished processes
 yoink clean
 ```
 
-> **More examples?** See [EXAMPLES.md](EXAMPLES.md) for real-world use cases — CI pipelines, interactive prompts, TUI monitoring, secret handling, and more.
+## Common Commands
 
-## How it works
+| Task | Command |
+|------|---------|
+| Run in background | `yoink run --alias name "command"` |
+| List managed processes | `yoink ls` |
+| Read recent output | `yoink log name --lines 100` |
+| Read only new output | `yoink log name --new` |
+| Send input | `yoink send name "text"` |
+| Send a key | `yoink send name --key ctrl+c` |
+| Send secret input | `yoink send-redacted name "$TOKEN"` |
+| Render a TUI screen | `yoink snapshot name` |
+| Wait with timeout | `yoink wait name --timeout 300` |
+| Reattach interactively | `yoink attach name` |
+| Stop a process | `yoink kill name` |
 
-yoink runs a lightweight daemon that holds PTY (pseudo-terminal) sessions open for each background process. The CLI client communicates with the daemon over a Unix socket.
+## Documentation
 
-- **run**: Spawns the command under a PTY in the daemon, returns an ID. Use `--alias` to name it
-- **ls**: Lists all processes with state (running/done/failed), PID, exit code
-- **log**: Shows buffered output (last 1000 lines kept per process). Use `--new` to see only lines since the last `--new` call
-- **wait**: Polls a process until it finishes, streaming new output to stdout on each cycle. Exits 0 on success, propagates the process exit code on failure, or exits 124 on timeout (matches GNU `timeout` convention). Flags: `--timeout` (seconds, 0=forever), `--poll` (seconds, default 2), `--message` (custom timeout error)
-- **snapshot** (`snap`): Renders the current VT100 screen of a process as plain text. Unlike `log`, this correctly handles TUI applications (htop, vim, Claude, etc.) by replaying their escape sequences through a VT100 emulator and returning only the rendered content. Works on both running and finished processes
-- **send**: Writes text to the process stdin (fire-and-forget). Flags: `--type` (character by character), `--delay` (ms between chars, default 50), `--no-enter` (omit trailing newline), `--submit` (append carriage-return Enter for TUIs like Claude), `--key` (send a named key sequence — e.g. `up`, `down`, `ctrl+c`, `f1`, `pageup`; implies `--no-enter`)
-- **send-redacted**: Same as send, but input is masked in logs. Supports the same flags
-- **attach**: Bridges your terminal to the process PTY for full interactive control
-- **kill**: Sends SIGTERM (or SIGKILL with --force)
-- **clean**: Removes finished processes from the list
+- [Why yoink?](docs/WHY.md): what problem it solves and how it compares to common alternatives.
+- [Killer examples](docs/KILLER_EXAMPLES.md): compact real-world CI and automation cases where yoink removes painful glue code.
+- [Command reference](docs/COMMANDS.md): commands, aliases, flags, and behavior notes.
+- [Examples](EXAMPLES.md): real-world workflows for CI, prompts, TUIs, tunnels, AI agents, model servers, E2E tests, and more.
+- [Architecture](docs/README.md): daemon/client design, PTY handling, snapshots, protocol, and platform notes.
 
-The daemon auto-starts when needed and stores its socket at `~/.yoink/yoink.sock`.
+## How It Works
+
+yoink runs a lightweight daemon that holds PTY sessions open for background processes. The CLI talks to the daemon over a Unix socket at `~/.yoink/yoink.sock`, which auto-starts when needed.
 
 ## Platform Support
 

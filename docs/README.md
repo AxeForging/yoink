@@ -1,5 +1,12 @@
 # yoink Documentation
 
+## Guides
+
+- [Why yoink?](WHY.md): positioning, use cases, and comparisons with common alternatives.
+- [Killer examples](KILLER_EXAMPLES.md): compact real-world CI and automation cases where yoink removes painful glue code.
+- [Command reference](COMMANDS.md): commands, aliases, flags, and behavior notes.
+- [Examples](../EXAMPLES.md): practical workflows for CI, prompts, TUIs, tunnels, AI agents, model servers, and more.
+
 ## Architecture
 
 yoink uses a daemon/client architecture:
