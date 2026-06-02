@@ -38,6 +38,7 @@ file_naming_pattern:
     - ".gitignore"
     - ".goreleaser.yml"
     - "*.gif"
+    - "*.png"
     - "LICENSE"
   disallowed:
     - "*.env*"
