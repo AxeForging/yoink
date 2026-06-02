@@ -71,14 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-
-      - name: Install yoink
-        run: |
-          go install github.com/AxeForging/yoink@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - uses: AxeForging/yoink@v0.1.0   # pin a release; use @main for latest
 
       - name: Start slow setup
         run: |
