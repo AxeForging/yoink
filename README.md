@@ -37,22 +37,33 @@ Prebuilt binaries for every OS/arch are attached to each [release](https://githu
 
 ### Use in CI (GitHub Actions)
 
-Set up a pinned yoink on the runner, then use it across steps:
+Set up a pinned yoink on the runner, then overlap a slow background download with real work so the job blocks on it only when it has to:
 
 ```yaml
 steps:
+  - uses: actions/checkout@v4
   - uses: AxeForging/yoink@v0.1.0   # pin a release tag (use @main for latest)
 
-  - name: Run a dev server in the background
-    run: yoink run --alias dev "npm run dev"
+  - run: npm ci
 
-  - name: Wait for it, then run tests
+  # Playwright browsers are a slow download — start it in the background now.
+  - name: Download browsers (background)
+    run: yoink run --alias browsers "npx playwright install --with-deps chromium"
+
+  # Real work runs while the download is in flight — this is where time is saved.
+  - name: Build & typecheck (overlaps the download)
     run: |
-      yoink wait dev --timeout 60 --poll 2 || true
-      npm test
+      npm run build
+      npm run typecheck
+
+  # Block on the download only now, right before the tests need it.
+  - name: Wait for browsers, then run e2e
+    run: |
+      yoink wait browsers --timeout 300 --poll 5
+      npx playwright test
 ```
 
-The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`. Linux and macOS runners are supported.
+Wall-clock becomes `max(build + typecheck, browser download)` instead of the sum — the gain comes entirely from the work you do *between* `run` and `wait`. The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`; Linux and macOS runners are supported.
 
 ## Quickstart
 
