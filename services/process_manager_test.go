@@ -1143,12 +1143,15 @@ func TestProcessManager_CleanAll_NonForceLeavesSigtermIgnoringProcessRunning(t *
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn(`sh -c 'trap "" TERM; sleep 300'`, "", SpawnOptions{})
+	id, err := pm.Spawn(`sh -c 'trap "" TERM; echo trap-ready; sleep 300'`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	waitForState(t, pm, id, domain.StateRunning, 5*time.Second)
-	time.Sleep(300 * time.Millisecond) // let the trap install before we signal
+	// Wait for proof the trap is actually installed rather than guessing a
+	// fixed delay — on a slow/contended CI runner, "sh" may not have reached
+	// the trap statement yet, and signaling too early would kill it for
+	// free, making this edge case impossible to observe.
+	waitForOutput(t, pm, id, "trap-ready", 5*time.Second)
 
 	count := pm.CleanAll(false)
 	if count != 0 {
@@ -1165,12 +1168,11 @@ func TestProcessManager_CleanAll_ForceKillsSigtermIgnoringProcess(t *testing.T) 
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn(`sh -c 'trap "" TERM; sleep 300'`, "", SpawnOptions{})
+	id, err := pm.Spawn(`sh -c 'trap "" TERM; echo trap-ready; sleep 300'`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
-	waitForState(t, pm, id, domain.StateRunning, 5*time.Second)
-	time.Sleep(300 * time.Millisecond)
+	waitForOutput(t, pm, id, "trap-ready", 5*time.Second)
 
 	count := pm.CleanAll(true)
 	if count != 1 {
