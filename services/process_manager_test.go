@@ -1143,7 +1143,12 @@ func TestProcessManager_CleanAll_NonForceLeavesSigtermIgnoringProcessRunning(t *
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn(`sh -c 'trap "" TERM; echo trap-ready; sleep 300'`, "", SpawnOptions{})
+	// Spawn already runs this via `sh -c`, so pass the script body directly —
+	// wrapping it in another `sh -c '...'` here would fork an unprotected
+	// outer shell (no trap of its own) on shells that don't collapse it via
+	// a tail-call exec optimization (e.g. dash), which dies to the default
+	// SIGTERM handler and defeats the whole point of this test.
+	id, err := pm.Spawn(`trap "" TERM; echo trap-ready; sleep 300`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -1168,7 +1173,12 @@ func TestProcessManager_CleanAll_ForceKillsSigtermIgnoringProcess(t *testing.T) 
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn(`sh -c 'trap "" TERM; echo trap-ready; sleep 300'`, "", SpawnOptions{})
+	// Spawn already runs this via `sh -c`, so pass the script body directly —
+	// wrapping it in another `sh -c '...'` here would fork an unprotected
+	// outer shell (no trap of its own) on shells that don't collapse it via
+	// a tail-call exec optimization (e.g. dash), which dies to the default
+	// SIGTERM handler and defeats the whole point of this test.
+	id, err := pm.Spawn(`trap "" TERM; echo trap-ready; sleep 300`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
