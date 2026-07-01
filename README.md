@@ -92,7 +92,9 @@ yoink clean
 | Task | Command |
 |------|---------|
 | Run in background | `yoink run --alias name "command"` |
+| Run in a specific directory | `yoink run --cwd ~/project "command"` |
 | List managed processes | `yoink ls` |
+| List with full command & cwd | `yoink ls --full` |
 | Read recent output | `yoink log name --lines 100` |
 | Read only new output | `yoink log name --new` |
 | Send input | `yoink send name "text"` |
@@ -102,6 +104,7 @@ yoink clean
 | Wait with timeout | `yoink wait name --timeout 300` |
 | Reattach interactively | `yoink attach name` |
 | Stop a process | `yoink kill name` |
+| Stop and remove everything | `yoink clean --all` |
 
 ## Documentation
 

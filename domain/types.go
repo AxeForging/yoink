@@ -21,6 +21,8 @@ type ProcessInfo struct {
 	ExitCode   int          `json:"exit_code"`
 	StartedAt  time.Time    `json:"started_at"`
 	FinishedAt *time.Time   `json:"finished_at,omitempty"`
+	Cwd        string       `json:"cwd,omitempty"`
+	LogFile    string       `json:"log_file,omitempty"`
 }
 
 // LineSource identifies where a log line came from.
@@ -63,11 +65,14 @@ type DaemonRequest struct {
 	Lines     int         `json:"lines,omitempty"`
 	New       bool        `json:"new,omitempty"`
 	Force     bool        `json:"force,omitempty"`
+	All       bool        `json:"all,omitempty"`
 	Redacted  bool        `json:"redacted,omitempty"`
 	TypeMode  bool        `json:"type_mode,omitempty"`
 	TypeDelay int         `json:"type_delay,omitempty"` // milliseconds between characters
 	NoEnter   bool        `json:"no_enter,omitempty"`
 	Submit    bool        `json:"submit,omitempty"`
+	Cwd       string      `json:"cwd,omitempty"`
+	LogFile   string      `json:"log_file,omitempty"`
 }
 
 // DaemonResponse is sent from daemon to client over the Unix socket.

@@ -3,7 +3,10 @@
 package services
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -45,7 +48,7 @@ func TestProcessManager_SpawnEcho(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("echo hello-yoink", "")
+	id, err := pm.Spawn("echo hello-yoink", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -73,7 +76,7 @@ func TestProcessManager_SpawnAndSendInput(t *testing.T) {
 	defer pm.Shutdown()
 
 	// cat will echo back what we send via PTY
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -91,7 +94,7 @@ func TestProcessManager_SpawnFailedExitCode(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("exit 42", "")
+	id, err := pm.Spawn("exit 42", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -113,7 +116,7 @@ func TestProcessManager_Kill(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("sleep 300", "")
+	id, err := pm.Spawn("sleep 300", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -131,7 +134,7 @@ func TestProcessManager_KillForce(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("sleep 300", "")
+	id, err := pm.Spawn("sleep 300", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -149,9 +152,9 @@ func TestProcessManager_List(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("echo one", "")
-	pm.Spawn("echo two", "")
-	pm.Spawn("sleep 300", "")
+	pm.Spawn("echo one", "", SpawnOptions{})
+	pm.Spawn("echo two", "", SpawnOptions{})
+	pm.Spawn("sleep 300", "", SpawnOptions{})
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -165,8 +168,8 @@ func TestProcessManager_Clean(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("echo done-quick", "")
-	id2, _ := pm.Spawn("sleep 300", "")
+	pm.Spawn("echo done-quick", "", SpawnOptions{})
+	id2, _ := pm.Spawn("sleep 300", "", SpawnOptions{})
 
 	// Wait for echo to finish
 	time.Sleep(500 * time.Millisecond)
@@ -197,7 +200,7 @@ func TestProcessManager_SendInput_NotRunning(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, _ := pm.Spawn("echo fast", "")
+	id, _ := pm.Spawn("echo fast", "", SpawnOptions{})
 	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
 
 	err := pm.SendInput(id, "too late", SendOptions{})
@@ -218,7 +221,7 @@ func TestProcessManager_MultilineOutput(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("printf 'line1\\nline2\\nline3\\n'", "")
+	id, err := pm.Spawn("printf 'line1\\nline2\\nline3\\n'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -239,7 +242,7 @@ func TestProcessManager_LabeledOutput(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -261,7 +264,7 @@ func TestProcessManager_SendRedacted(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -303,7 +306,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	defer pm.Shutdown()
 
 	// Use a script that produces distinct reply lines so we can wait for exact output
-	id, err := pm.Spawn("sh -c 'while read line; do echo reply-$line; done'", "")
+	id, err := pm.Spawn("sh -c 'while read line; do echo reply-$line; done'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -362,7 +365,7 @@ func TestProcessManager_SpawnWithAlias(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("echo aliased", "deploy")
+	id, err := pm.Spawn("echo aliased", "deploy", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -385,7 +388,7 @@ func TestProcessManager_ResolveID_ByAlias(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("sleep 300", "myproc")
+	id, err := pm.Spawn("sleep 300", "myproc", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -403,7 +406,7 @@ func TestProcessManager_ResolveID_ByNumericID(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("sleep 300", "")
+	pm.Spawn("sleep 300", "", SpawnOptions{})
 
 	resolved, err := pm.ResolveID("1")
 	if err != nil {
@@ -426,12 +429,12 @@ func TestProcessManager_DuplicateAlias(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	_, err := pm.Spawn("sleep 300", "dup")
+	_, err := pm.Spawn("sleep 300", "dup", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("first Spawn failed: %v", err)
 	}
 
-	_, err = pm.Spawn("sleep 300", "dup")
+	_, err = pm.Spawn("sleep 300", "dup", SpawnOptions{})
 	if err == nil {
 		t.Error("expected error for duplicate alias")
 	}
@@ -441,13 +444,13 @@ func TestProcessManager_AliasReuseAfterClean(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, _ := pm.Spawn("echo fast", "reuse-me")
+	id, _ := pm.Spawn("echo fast", "reuse-me", SpawnOptions{})
 	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
 
 	pm.Clean()
 
 	// Alias should be available again
-	id2, err := pm.Spawn("echo again", "reuse-me")
+	id2, err := pm.Spawn("echo again", "reuse-me", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("expected alias reuse after clean, got: %v", err)
 	}
@@ -460,7 +463,7 @@ func TestProcessManager_AliasWithOperations(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, _ := pm.Spawn("cat", "interactive")
+	id, _ := pm.Spawn("cat", "interactive", SpawnOptions{})
 	time.Sleep(200 * time.Millisecond)
 
 	// Resolve alias and use for operations
@@ -486,7 +489,7 @@ func TestProcessManager_TypeMode_OutputAppears(t *testing.T) {
 
 	// cat echoes back what it receives; with type mode the chars arrive one by one
 	// but the output should still contain the full string once newline is sent.
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -504,7 +507,7 @@ func TestProcessManager_TypeMode_DelayIsRespected(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -532,7 +535,7 @@ func TestProcessManager_TypeMode_ZeroDelay(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -553,7 +556,7 @@ func TestProcessManager_NoEnter_NoLineEcho(t *testing.T) {
 
 	// Use a shell that echoes lines only after receiving a newline.
 	// send-without-enter should NOT produce a completed line in output.
-	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -587,7 +590,7 @@ func TestProcessManager_SubmitUsesCarriageReturn(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'", "")
+	id, err := pm.Spawn("sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -605,7 +608,7 @@ func TestProcessManager_TypeMode_WithRedaction(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("cat", "")
+	id, err := pm.Spawn("cat", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -632,7 +635,7 @@ func TestProcessManager_TypeMode_NoEnter_Combined(t *testing.T) {
 	defer pm.Shutdown()
 
 	// Type char by char without a trailing newline, then complete separately.
-	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "")
+	id, err := pm.Spawn("sh -c 'read -r line; echo got-$line'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -668,7 +671,7 @@ func TestProcessManager_Snapshot_PlainText(t *testing.T) {
 	defer pm.Shutdown()
 
 	// A plain process with no TUI — snapshot should still show its output.
-	id, err := pm.Spawn("sh -c 'echo hello-snap; sleep 300'", "")
+	id, err := pm.Spawn("sh -c 'echo hello-snap; sleep 300'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -690,7 +693,7 @@ func TestProcessManager_Snapshot_PositionedText(t *testing.T) {
 
 	// Use ANSI cursor positioning — yoink log would show raw escape garbage,
 	// but snapshot should give clean rendered text at the correct coordinates.
-	id, err := pm.Spawn(`sh -c 'printf "\033[2J\033[3;5Hyoink-tui-test\033[5;1Hsecond-line"; sleep 300'`, "")
+	id, err := pm.Spawn(`sh -c 'printf "\033[2J\033[3;5Hyoink-tui-test\033[5;1Hsecond-line"; sleep 300'`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -731,7 +734,7 @@ func TestProcessManager_Snapshot_ClearAndRedraw(t *testing.T) {
 	// Process that draws one thing, then clears and draws something else.
 	// Snapshot should reflect the FINAL screen state, not the history.
 	// yoink log would show both; snapshot shows only what's currently rendered.
-	id, err := pm.Spawn(`sh -c 'printf "initial-content"; sleep 0.2; printf "\033[2Jfinal-content"; sleep 300'`, "")
+	id, err := pm.Spawn(`sh -c 'printf "initial-content"; sleep 0.2; printf "\033[2Jfinal-content"; sleep 300'`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -755,7 +758,7 @@ func TestProcessManager_Snapshot_FinishedProcess(t *testing.T) {
 	defer pm.Shutdown()
 
 	// Snapshot works on finished processes — the VT holds the last frame.
-	id, err := pm.Spawn("echo snap-after-exit", "")
+	id, err := pm.Spawn("echo snap-after-exit", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -785,7 +788,7 @@ func TestProcessManager_Snapshot_ScreenDimensions(t *testing.T) {
 
 	// VT emulator is 80×24. Content placed beyond col 80 or row 24 is clipped.
 	// Content within bounds must be reachable via snapshot.
-	id, err := pm.Spawn(`sh -c 'printf "\033[24;1Hlast-row"; sleep 300'`, "")
+	id, err := pm.Spawn(`sh -c 'printf "\033[24;1Hlast-row"; sleep 300'`, "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -814,7 +817,7 @@ func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
 	// of how many processes are running. Works on both Linux (top -b -n 1) and
 	// macOS (top -l 1). The column-header row (with "PID") is always within
 	// the first 10 lines of top output, well inside the 18-line window.
-	id, err := pm.Spawn("sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'", "")
+	id, err := pm.Spawn("sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -988,5 +991,204 @@ func TestStripVTProblematic(t *testing.T) {
 				t.Errorf("stripVTProblematic(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestProcessManager_Spawn_UsesGivenCwd(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	dir := t.TempDir()
+	// Resolve symlinks (e.g. macOS /tmp -> /private/tmp) so this matches
+	// exactly what the spawned shell's `pwd` reports.
+	wantDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks failed: %v", err)
+	}
+
+	id, err := pm.Spawn("pwd", "", SpawnOptions{Cwd: dir})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+
+	waitForOutput(t, pm, id, wantDir, 5*time.Second)
+
+	for _, p := range pm.List() {
+		if p.ID == id {
+			if p.Cwd != dir {
+				t.Errorf("expected ProcessInfo.Cwd %q, got %q", dir, p.Cwd)
+			}
+			return
+		}
+	}
+	t.Error("process not found in list")
+}
+
+func TestProcessManager_Spawn_DefaultCwdIsUnset(t *testing.T) {
+	// Regression guard: without an explicit SpawnOptions.Cwd, ProcessInfo.Cwd
+	// must stay empty rather than defaulting to some resolved path — callers
+	// (like ls --full) rely on empty meaning "inherited daemon cwd".
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("echo no-cwd-set", "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
+
+	for _, p := range pm.List() {
+		if p.ID == id {
+			if p.Cwd != "" {
+				t.Errorf("expected empty Cwd when none was requested, got %q", p.Cwd)
+			}
+			return
+		}
+	}
+	t.Error("process not found in list")
+}
+
+func TestProcessManager_Spawn_LogFileCapturesOutputBeyondRingBufferLimit(t *testing.T) {
+	// The whole point of --log-file is to escape the ring buffer's size cap,
+	// so use a tiny buffer here to prove the file keeps everything the
+	// buffer necessarily discards.
+	pm := NewProcessManager(3)
+	defer pm.Shutdown()
+
+	logPath := filepath.Join(t.TempDir(), "full.log")
+
+	id, err := pm.Spawn(`sh -c 'for i in $(seq 1 20); do echo "line-$i"; done'`, "", SpawnOptions{LogFile: logPath})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
+
+	entries, err := pm.GetLogEntries(id, 100)
+	if err != nil {
+		t.Fatalf("GetLogEntries failed: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected the ring buffer capped at 3 entries, got %d: %+v", len(entries), entries)
+	}
+	if entries[len(entries)-1].Text != "line-20" {
+		t.Errorf("expected ring buffer to retain only the most recent lines, got %+v", entries)
+	}
+
+	// Give the capture goroutine a moment to close the file after process exit.
+	deadline := time.Now().Add(2 * time.Second)
+	var content string
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			t.Fatalf("failed to read log file: %v", err)
+		}
+		content = string(data)
+		if strings.Count(content, "\n") >= 20 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	for i := 1; i <= 20; i++ {
+		want := fmt.Sprintf("line-%d", i)
+		if !strings.Contains(content, want) {
+			t.Fatalf("expected log file to contain %q (buffer only kept the last 3), got:\n%s", want, content)
+		}
+	}
+}
+
+func TestProcessManager_Spawn_LogFileOpenFailureLeavesNoProcessRegistered(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	badPath := filepath.Join(t.TempDir(), "no-such-dir", "out.log")
+	_, err := pm.Spawn("echo hi", "", SpawnOptions{LogFile: badPath})
+	if err == nil {
+		t.Fatal("expected an error when the log file's parent directory does not exist")
+	}
+	if len(pm.List()) != 0 {
+		t.Errorf("expected no process to be registered after a failed spawn, got %d", len(pm.List()))
+	}
+}
+
+func TestProcessManager_CleanAll_StopsAndRemovesRunningProcesses(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	doneID, err := pm.Spawn("echo already-done", "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForState(t, pm, doneID, domain.StateDone, 5*time.Second)
+
+	runningID, err := pm.Spawn("sleep 300", "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForState(t, pm, runningID, domain.StateRunning, 5*time.Second)
+
+	count := pm.CleanAll(false)
+	if count != 2 {
+		t.Fatalf("expected 2 processes cleaned, got %d", count)
+	}
+	if remaining := pm.List(); len(remaining) != 0 {
+		t.Errorf("expected all processes removed after CleanAll, got %d remaining: %+v", len(remaining), remaining)
+	}
+}
+
+func TestProcessManager_CleanAll_NonForceLeavesSigtermIgnoringProcessRunning(t *testing.T) {
+	// Edge case: a process that traps SIGTERM should NOT be silently dropped
+	// from tracking just because CleanAll asked it to stop — CleanAll must
+	// only remove processes that actually exited.
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Spawn already runs this via `sh -c`, so pass the script body directly —
+	// wrapping it in another `sh -c '...'` here would fork an unprotected
+	// outer shell (no trap of its own) on shells that don't collapse it via
+	// a tail-call exec optimization (e.g. dash), which dies to the default
+	// SIGTERM handler and defeats the whole point of this test.
+	id, err := pm.Spawn(`trap "" TERM; echo trap-ready; sleep 300`, "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	// Wait for proof the trap is actually installed rather than guessing a
+	// fixed delay — on a slow/contended CI runner, "sh" may not have reached
+	// the trap statement yet, and signaling too early would kill it for
+	// free, making this edge case impossible to observe.
+	waitForOutput(t, pm, id, "trap-ready", 5*time.Second)
+
+	count := pm.CleanAll(false)
+	if count != 0 {
+		t.Errorf("expected 0 processes cleaned (SIGTERM is ignored), got %d", count)
+	}
+
+	list := pm.List()
+	if len(list) != 1 || list[0].ID != id || list[0].State != domain.StateRunning {
+		t.Fatalf("expected process %d to remain tracked and running, got: %+v", id, list)
+	}
+}
+
+func TestProcessManager_CleanAll_ForceKillsSigtermIgnoringProcess(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Spawn already runs this via `sh -c`, so pass the script body directly —
+	// wrapping it in another `sh -c '...'` here would fork an unprotected
+	// outer shell (no trap of its own) on shells that don't collapse it via
+	// a tail-call exec optimization (e.g. dash), which dies to the default
+	// SIGTERM handler and defeats the whole point of this test.
+	id, err := pm.Spawn(`trap "" TERM; echo trap-ready; sleep 300`, "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForOutput(t, pm, id, "trap-ready", 5*time.Second)
+
+	count := pm.CleanAll(true)
+	if count != 1 {
+		t.Fatalf("expected 1 process force-cleaned, got %d", count)
+	}
+	if remaining := pm.List(); len(remaining) != 0 {
+		t.Errorf("expected process removed after force CleanAll, got %d remaining", len(remaining))
 	}
 }

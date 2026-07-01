@@ -99,6 +99,17 @@ func (e *testEnv) run(args ...string) (string, error) {
 	return string(out), err
 }
 
+// runFrom runs the CLI as if invoked from dir, to exercise behavior that
+// depends on the client's own working directory (as opposed to the daemon's).
+func (e *testEnv) runFrom(dir string, args ...string) (string, error) {
+	e.t.Helper()
+	cmd := exec.Command(e.bin, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "YOINK_SOCK="+e.sockPath, "HOME="+e.sockDir)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 func (e *testEnv) sendDaemonRequest(req domain.DaemonRequest) domain.DaemonResponse {
 	e.t.Helper()
 	conn, err := net.Dial("unix", e.sockPath)
@@ -651,5 +662,205 @@ ready:
 	// Verify there are no raw CSI escape sequences in the snapshot output.
 	if strings.Contains(out, "\x1b[") {
 		t.Errorf("snapshot should not contain raw ANSI escape sequences, got: %q", out)
+	}
+}
+
+func TestIntegration_RunUsesClientCwdNotDaemonCwd(t *testing.T) {
+	env := newTestEnv(t)
+
+	// The daemon process itself inherits this test binary's own cwd (its Dir
+	// is never set in newTestEnv) — capture it so we can prove the spawned
+	// process did NOT fall back to it.
+	daemonCwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("cannot get test working directory: %v", err)
+	}
+
+	clientDir := t.TempDir()
+	wantDir, err := filepath.EvalSymlinks(clientDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks failed: %v", err)
+	}
+	if wantDir == daemonCwd {
+		t.Fatalf("test setup invalid: client dir %q must differ from daemon cwd", wantDir)
+	}
+
+	out, err := env.runFrom(clientDir, "run", "--alias", "pwdcheck", "pwd")
+	if err != nil {
+		t.Fatalf("run failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "pwdcheck",
+		Lines: 10,
+	})
+	if !strings.Contains(logResp.Output, wantDir) {
+		t.Errorf("expected process to run in the client's cwd %q, got: %q", wantDir, logResp.Output)
+	}
+	if strings.Contains(logResp.Output, daemonCwd) {
+		t.Errorf("process ran in the daemon's cwd %q instead of the client's, got: %q", daemonCwd, logResp.Output)
+	}
+}
+
+func TestIntegration_RunCwdFlagOverridesClientCwd(t *testing.T) {
+	env := newTestEnv(t)
+
+	explicitDir := t.TempDir()
+	wantDir, err := filepath.EvalSymlinks(explicitDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks failed: %v", err)
+	}
+	callerDir := t.TempDir()
+
+	out, err := env.runFrom(callerDir, "run", "--alias", "explicit-cwd", "--cwd", explicitDir, "pwd")
+	if err != nil {
+		t.Fatalf("run --cwd failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "explicit-cwd",
+		Lines: 10,
+	})
+	if !strings.Contains(logResp.Output, wantDir) {
+		t.Errorf("expected --cwd to override the caller's directory, got: %q", logResp.Output)
+	}
+}
+
+func TestIntegration_RunCwdFlagResolvesRelativeToCaller(t *testing.T) {
+	env := newTestEnv(t)
+
+	callerDir := t.TempDir()
+	subDir := filepath.Join(callerDir, "sub")
+	if err := os.Mkdir(subDir, 0o755); err != nil {
+		t.Fatalf("failed to create subdir: %v", err)
+	}
+	wantDir, err := filepath.EvalSymlinks(subDir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks failed: %v", err)
+	}
+
+	out, err := env.runFrom(callerDir, "run", "--alias", "relative-cwd", "--cwd", "sub", "pwd")
+	if err != nil {
+		t.Fatalf("run --cwd sub failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := env.sendDaemonRequest(domain.DaemonRequest{
+		Type:  domain.ReqLog,
+		Alias: "relative-cwd",
+		Lines: 10,
+	})
+	if !strings.Contains(logResp.Output, wantDir) {
+		t.Errorf("expected a relative --cwd to resolve against the caller's directory %q, got: %q", callerDir, logResp.Output)
+	}
+}
+
+func TestIntegration_RunLogFileTeesFullOutput(t *testing.T) {
+	env := newTestEnv(t)
+
+	logPath := filepath.Join(t.TempDir(), "full-output.log")
+
+	out, err := env.run("run", "--alias", "teed", "--log-file", logPath,
+		"sh -c 'echo teed-line-one; echo teed-line-two'")
+	if err != nil {
+		t.Fatalf("run --log-file failed: %v\noutput: %s", err, out)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "teed-line-one") || !strings.Contains(content, "teed-line-two") {
+		t.Errorf("expected log file to contain the full process output, got: %q", content)
+	}
+}
+
+func TestIntegration_LsFullShowsUntruncatedCommandAndCwd(t *testing.T) {
+	env := newTestEnv(t)
+
+	longArg := strings.Repeat("x", 80)
+	longCommand := "echo " + longArg
+
+	if _, err := env.run("run", "--alias", "longcmd", longCommand); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Default ls must keep truncating — this is the regression guard that
+	// --full must not change existing behavior.
+	defaultOut, err := env.run("ls")
+	if err != nil {
+		t.Fatalf("ls failed: %v\noutput: %s", err, defaultOut)
+	}
+	if !strings.Contains(defaultOut, "...") {
+		t.Errorf("expected default ls to truncate a long command, got: %q", defaultOut)
+	}
+	if strings.Contains(defaultOut, longCommand) {
+		t.Errorf("expected default ls NOT to contain the full untruncated command, got: %q", defaultOut)
+	}
+
+	fullOut, err := env.run("ls", "--full")
+	if err != nil {
+		t.Fatalf("ls --full failed: %v\noutput: %s", err, fullOut)
+	}
+	if !strings.Contains(fullOut, longCommand) {
+		t.Errorf("expected ls --full to contain the untruncated command, got: %q", fullOut)
+	}
+	if !strings.Contains(fullOut, "CWD") {
+		t.Errorf("expected ls --full header to include a CWD column, got: %q", fullOut)
+	}
+}
+
+func TestIntegration_CleanAll(t *testing.T) {
+	env := newTestEnv(t)
+
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo clean-all-done",
+	})
+	env.sendDaemonRequest(domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "sleep 300",
+	})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Plain clean must not touch the still-running process.
+	out, err := env.run("clean")
+	if err != nil {
+		t.Fatalf("clean failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Cleaned 1 process") {
+		t.Errorf("expected plain clean to report removing only the finished process, got: %q", out)
+	}
+
+	listResp := env.sendDaemonRequest(domain.DaemonRequest{Type: domain.ReqList})
+	if len(listResp.Processes) != 1 || listResp.Processes[0].State != domain.StateRunning {
+		t.Fatalf("expected the running process to survive plain clean, got: %+v", listResp.Processes)
+	}
+
+	// clean --all must stop and remove the still-running process too.
+	out, err = env.run("clean", "--all")
+	if err != nil {
+		t.Fatalf("clean --all failed: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "Stopped and removed 1 process") {
+		t.Errorf("expected clean --all to report stopping the running process, got: %q", out)
+	}
+
+	listResp = env.sendDaemonRequest(domain.DaemonRequest{Type: domain.ReqList})
+	if len(listResp.Processes) != 0 {
+		t.Errorf("expected no processes left after clean --all, got %d", len(listResp.Processes))
 	}
 }

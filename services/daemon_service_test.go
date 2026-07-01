@@ -490,6 +490,110 @@ func TestDaemon_WaitPolling(t *testing.T) {
 	}
 }
 
+func TestDaemon_RunWithCwd(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	dir := t.TempDir()
+	wantDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("EvalSymlinks failed: %v", err)
+	}
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "pwd",
+		Cwd:     dir,
+	})
+	if !resp.Success {
+		t.Fatalf("run failed: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	logResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqLog, ID: 1, Lines: 10})
+	if !strings.Contains(logResp.Output, wantDir) {
+		t.Errorf("expected process to run in %q, got output: %q", wantDir, logResp.Output)
+	}
+
+	listResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqList})
+	if listResp.Processes[0].Cwd != dir {
+		t.Errorf("expected ProcessInfo.Cwd %q, got %q", dir, listResp.Processes[0].Cwd)
+	}
+}
+
+func TestDaemon_RunWithLogFile(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	logPath := filepath.Join(t.TempDir(), "daemon-teed.log")
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo daemon-teed-line",
+		LogFile: logPath,
+	})
+	if !resp.Success {
+		t.Fatalf("run failed: %s", resp.Error)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("failed to read log file: %v", err)
+	}
+	if !strings.Contains(string(data), "daemon-teed-line") {
+		t.Errorf("expected log file to contain the teed output, got: %q", string(data))
+	}
+}
+
+func TestDaemon_RunWithInvalidLogFileFails(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	resp := sendRequest(t, sockPath, domain.DaemonRequest{
+		Type:    domain.ReqRun,
+		Command: "echo hi",
+		LogFile: filepath.Join(t.TempDir(), "missing-dir", "out.log"),
+	})
+	if resp.Success {
+		t.Error("expected failure when the log file's parent directory does not exist")
+	}
+	if resp.Error == "" {
+		t.Error("expected an error message")
+	}
+}
+
+func TestDaemon_CleanAll(t *testing.T) {
+	_, sockPath := startTestDaemon(t)
+
+	sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqRun, Command: "echo done-already"})
+	sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqRun, Command: "sleep 300"})
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Plain clean must leave the still-running process alone.
+	cleanResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqClean})
+	if !cleanResp.Success {
+		t.Fatalf("clean failed: %s", cleanResp.Error)
+	}
+	if cleanResp.Cleaned != 1 {
+		t.Fatalf("expected plain clean to remove 1 process, got %d", cleanResp.Cleaned)
+	}
+
+	// clean --all must stop and remove the still-running process too.
+	allResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqClean, All: true})
+	if !allResp.Success {
+		t.Fatalf("clean --all failed: %s", allResp.Error)
+	}
+	if allResp.Cleaned != 1 {
+		t.Errorf("expected clean --all to remove the still-running process, got %d", allResp.Cleaned)
+	}
+
+	listResp := sendRequest(t, sockPath, domain.DaemonRequest{Type: domain.ReqList})
+	if len(listResp.Processes) != 0 {
+		t.Errorf("expected 0 processes remaining, got %d", len(listResp.Processes))
+	}
+}
+
 func TestDaemon_Shutdown(t *testing.T) {
 	_, sockPath := startTestDaemon(t)
 
