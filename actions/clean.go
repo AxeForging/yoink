@@ -18,9 +18,15 @@ func NewCleanAction(client *services.ClientService) *CleanAction {
 	return &CleanAction{client: client}
 }
 
-// Execute removes all non-running processes.
+// Execute removes non-running processes, or with --all, stops and removes everything.
 func (a *CleanAction) Execute(c *cli.Context) error {
-	resp, err := a.client.Do(domain.DaemonRequest{Type: domain.ReqClean})
+	all := c.Bool("all")
+
+	resp, err := a.client.Do(domain.DaemonRequest{
+		Type:  domain.ReqClean,
+		All:   all,
+		Force: c.Bool("force"),
+	})
 	if err != nil {
 		return err
 	}
@@ -28,9 +34,12 @@ func (a *CleanAction) Execute(c *cli.Context) error {
 		return fmt.Errorf("%s", resp.Error)
 	}
 
-	if resp.Cleaned == 0 {
+	switch {
+	case resp.Cleaned == 0:
 		fmt.Println("Nothing to clean")
-	} else {
+	case all:
+		fmt.Printf("Stopped and removed %d process(es)\n", resp.Cleaned)
+	default:
 		fmt.Printf("Cleaned %d process(es)\n", resp.Cleaned)
 	}
 	return nil

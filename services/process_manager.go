@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -14,11 +15,12 @@ import (
 )
 
 type managedProcess struct {
-	info   domain.ProcessInfo
-	pty    io.ReadWriteCloser
-	cmd    *exec.Cmd
-	buffer *RingBuffer
-	vt     vt10x.Terminal // VT100 emulator for snapshot support
+	info    domain.ProcessInfo
+	pty     io.ReadWriteCloser
+	cmd     *exec.Cmd
+	buffer  *RingBuffer
+	vt      vt10x.Terminal // VT100 emulator for snapshot support
+	logFile *os.File       // optional: raw PTY bytes teed here, unbounded by the ring buffer
 
 	attachMu  sync.Mutex
 	attachOut io.Writer
@@ -48,8 +50,14 @@ func NewProcessManager(bufSize int) *ProcessManager {
 	}
 }
 
+// SpawnOptions configures how a new managed process is started.
+type SpawnOptions struct {
+	Cwd     string // working directory for the process; empty uses the daemon's own cwd
+	LogFile string // if set, raw PTY output is additionally teed to this file, unbounded by the ring buffer
+}
+
 // Spawn starts a new background process and returns its ID.
-func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
+func (pm *ProcessManager) Spawn(command, alias string, opts SpawnOptions) (int, error) {
 	pm.mu.Lock()
 	if alias != "" {
 		if _, exists := pm.aliases[alias]; exists {
@@ -61,9 +69,22 @@ func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
 	pm.nextID++
 	pm.mu.Unlock()
 
+	var logFile *os.File
+	if opts.LogFile != "" {
+		f, err := os.OpenFile(opts.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		if err != nil {
+			return 0, fmt.Errorf("failed to open log file: %w", err)
+		}
+		logFile = f
+	}
+
 	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = opts.Cwd
 	ptmx, err := StartProcessWithPTY(cmd)
 	if err != nil {
+		if logFile != nil {
+			logFile.Close() //nolint:errcheck
+		}
 		return 0, fmt.Errorf("failed to start process: %w", err)
 	}
 
@@ -78,11 +99,14 @@ func (pm *ProcessManager) Spawn(command, alias string) (int, error) {
 			State:     domain.StateRunning,
 			PID:       cmd.Process.Pid,
 			StartedAt: now,
+			Cwd:       opts.Cwd,
+			LogFile:   opts.LogFile,
 		},
-		pty:    ptmx,
-		cmd:    cmd,
-		buffer: buf,
-		vt:     vt10x.New(vt10x.WithSize(220, 50)),
+		pty:     ptmx,
+		cmd:     cmd,
+		buffer:  buf,
+		vt:      vt10x.New(vt10x.WithSize(220, 50)),
+		logFile: logFile,
 	}
 
 	pm.mu.Lock()
@@ -128,6 +152,10 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 			}
 			mp.attachMu.Unlock()
 
+			if mp.logFile != nil {
+				mp.logFile.Write(data) //nolint:errcheck
+			}
+
 			mp.vt.Write(stripVTProblematic(data)) //nolint:errcheck
 
 			partial += string(data)
@@ -160,6 +188,9 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 		if err != nil {
 			if partial != "" {
 				mp.buffer.Write(domain.LogEntry{Source: domain.SourceStdout, Text: strings.TrimRight(partial, "\r")})
+			}
+			if mp.logFile != nil {
+				mp.logFile.Close() //nolint:errcheck
 			}
 			break
 		}
@@ -504,6 +535,43 @@ func (pm *ProcessManager) Clean() int {
 		}
 	}
 	return count
+}
+
+// CleanAll stops every running process and removes all managed processes,
+// waiting (up to 5s total) for terminated processes to actually exit before
+// removing them. Use force=true to send SIGKILL instead of SIGTERM.
+func (pm *ProcessManager) CleanAll(force bool) int {
+	pm.mu.RLock()
+	running := make([]*managedProcess, 0, len(pm.processes))
+	for _, mp := range pm.processes {
+		if mp.info.State == domain.StateRunning {
+			running = append(running, mp)
+		}
+	}
+	pm.mu.RUnlock()
+
+	for _, mp := range running {
+		if force {
+			KillProcess(mp.cmd.Process) //nolint:errcheck
+		} else {
+			TerminateProcess(mp.cmd.Process) //nolint:errcheck
+		}
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for _, mp := range running {
+		for time.Now().Before(deadline) {
+			pm.mu.RLock()
+			state := mp.info.State
+			pm.mu.RUnlock()
+			if state != domain.StateRunning {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+
+	return pm.Clean()
 }
 
 // Shutdown terminates all running processes and cleans up.

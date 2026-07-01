@@ -2,13 +2,14 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"sort"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/AxeForging/yoink/domain"
 	"github.com/AxeForging/yoink/services"
 	"github.com/urfave/cli"
-	"os"
 )
 
 // LsAction lists all managed background processes.
@@ -40,8 +41,15 @@ func (a *LsAction) Execute(c *cli.Context) error {
 		return resp.Processes[i].ID < resp.Processes[j].ID
 	})
 
+	full := c.Bool("full")
+
+	header := []string{"ID", "ALIAS", "STATE", "PID", "EXIT", "STARTED", "COMMAND"}
+	if full {
+		header = []string{"ID", "ALIAS", "STATE", "PID", "EXIT", "STARTED", "CWD", "COMMAND"}
+	}
+
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tALIAS\tSTATE\tPID\tEXIT\tSTARTED\tCOMMAND")
+	fmt.Fprintln(w, strings.Join(header, "\t"))
 	for _, p := range resp.Processes {
 		exitStr := "-"
 		if p.State != domain.StateRunning {
@@ -51,11 +59,29 @@ func (a *LsAction) Execute(c *cli.Context) error {
 		if p.Alias != "" {
 			aliasStr = p.Alias
 		}
-		fmt.Fprintf(w, "%d\t%s\t%s\t%d\t%s\t%s\t%s\n",
-			p.ID, aliasStr, p.State, p.PID, exitStr,
+		command := p.Command
+		if !full {
+			command = truncate(command, 60)
+		}
+
+		row := []string{
+			fmt.Sprintf("%d", p.ID),
+			aliasStr,
+			string(p.State),
+			fmt.Sprintf("%d", p.PID),
+			exitStr,
 			p.StartedAt.Format("15:04:05"),
-			truncate(p.Command, 60),
-		)
+		}
+		if full {
+			cwdStr := p.Cwd
+			if cwdStr == "" {
+				cwdStr = "-"
+			}
+			row = append(row, cwdStr)
+		}
+		row = append(row, command)
+
+		fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
 	w.Flush()
 	return nil

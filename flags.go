@@ -70,3 +70,23 @@ var keyFlag = cli.StringFlag{
 	Name:  "key, k",
 	Usage: "Send a named key sequence instead of text (e.g. up, down, ctrl+c, f1, pageup)",
 }
+
+var cwdFlag = cli.StringFlag{
+	Name:  "cwd",
+	Usage: "Working directory for the process (default: your current directory)",
+}
+
+var logFileFlag = cli.StringFlag{
+	Name:  "log-file",
+	Usage: "Tee full raw output to this file, unbounded by the in-memory log buffer",
+}
+
+var fullFlag = cli.BoolFlag{
+	Name:  "full",
+	Usage: "Show the untruncated command and working directory",
+}
+
+var allFlag = cli.BoolFlag{
+	Name:  "all, a",
+	Usage: "Also stop and remove running processes",
+}

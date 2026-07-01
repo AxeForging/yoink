@@ -11,6 +11,8 @@ Spawn a command under a managed PTY.
 ```bash
 yoink run "make deploy-staging"
 yoink run --alias deploy "make deploy-staging"
+yoink run --cwd ~/projects/api "npm test"
+yoink run --log-file /tmp/build-full.log "make build"
 ```
 
 Aliases: `r`
@@ -20,6 +22,12 @@ Flags:
 | Flag | Description |
 |------|-------------|
 | `--alias <name>` | Assign a stable name for later commands |
+| `--cwd <dir>` | Working directory for the process. Default: your current directory. Relative paths resolve against it |
+| `--log-file <path>` | Also tee full raw output to this file, unbounded by the in-memory log buffer |
+
+`yoink` runs as a long-lived daemon, so without `--cwd` it always uses *your* current directory at the moment you run `yoink run` — not wherever the daemon happened to start.
+
+`--log-file` is useful when a process produces more output than the default in-memory buffer keeps (e.g. a noisy build): `log`/`log --new` only ever see the buffered tail, but the file on disk has everything.
 
 ### `yoink ls`
 
@@ -27,9 +35,16 @@ List managed processes with state, PID, aliases, and exit information.
 
 ```bash
 yoink ls
+yoink ls --full
 ```
 
 Aliases: `list`, `ps`
+
+Flags:
+
+| Flag | Description |
+|------|-------------|
+| `--full` | Show the untruncated command and a CWD column, instead of a 60-char-truncated command |
 
 ### `yoink kill`
 
@@ -54,7 +69,18 @@ Remove finished or failed processes from the process list.
 
 ```bash
 yoink clean
+yoink clean --all
+yoink clean --all --force
 ```
+
+Flags:
+
+| Flag | Description |
+|------|-------------|
+| `--all`, `-a` | Also stop still-running processes (SIGTERM, or SIGKILL with `--force`) before removing everything |
+| `--force`, `-f` | With `--all`, send SIGKILL instead of SIGTERM |
+
+Plain `clean` only ever touches finished/failed processes. `clean --all` is the one-shot "start over" command — it stops whatever is still running first, then removes everything.
 
 ## Output
 

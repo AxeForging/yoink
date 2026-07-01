@@ -65,13 +65,14 @@ func main() {
 			Name:    "run",
 			Aliases: []string{"r"},
 			Usage:   "Spawn a command in the background",
-			Flags:   []cli.Flag{aliasFlag},
+			Flags:   []cli.Flag{aliasFlag, cwdFlag, logFileFlag},
 			Action:  runAction.Execute,
 		},
 		{
 			Name:    "ls",
 			Aliases: []string{"list", "ps"},
 			Usage:   "List all managed processes",
+			Flags:   []cli.Flag{fullFlag},
 			Action:  lsAction.Execute,
 		},
 		{
@@ -124,6 +125,7 @@ func main() {
 		{
 			Name:   "clean",
 			Usage:  "Remove finished/failed processes from the list",
+			Flags:  []cli.Flag{allFlag, forceFlag},
 			Action: cleanAction.Execute,
 		},
 		{

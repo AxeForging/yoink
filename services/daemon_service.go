@@ -108,7 +108,7 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 	case domain.ReqKill:
 		ds.handleKill(conn, req)
 	case domain.ReqClean:
-		ds.handleClean(conn)
+		ds.handleClean(conn, req)
 	case domain.ReqShutdown:
 		ds.handleShutdown(conn)
 		return
@@ -124,7 +124,7 @@ func (ds *DaemonServer) sendResponse(conn net.Conn, resp domain.DaemonResponse) 
 
 func (ds *DaemonServer) handleRun(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	id, err := ds.pm.Spawn(req.Command, req.Alias)
+	id, err := ds.pm.Spawn(req.Command, req.Alias, SpawnOptions{Cwd: req.Cwd, LogFile: req.LogFile})
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
@@ -221,9 +221,14 @@ func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {
 	ds.sendResponse(conn, domain.DaemonResponse{Success: true, ID: req.ID})
 }
 
-func (ds *DaemonServer) handleClean(conn net.Conn) {
+func (ds *DaemonServer) handleClean(conn net.Conn, req domain.DaemonRequest) {
 	defer conn.Close()
-	count := ds.pm.Clean()
+	var count int
+	if req.All {
+		count = ds.pm.CleanAll(req.Force)
+	} else {
+		count = ds.pm.Clean()
+	}
 	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Cleaned: count})
 }
 
