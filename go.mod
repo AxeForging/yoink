@@ -2,6 +2,8 @@ module github.com/AxeForging/yoink
 
 go 1.25.0
 
+toolchain go1.25.12
+
 require (
 	github.com/creack/pty v1.1.24
 	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
