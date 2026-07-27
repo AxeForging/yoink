@@ -21,7 +21,13 @@ import (
 func connectMCP(t *testing.T) *mcpsdk.ClientSession {
 	t.Helper()
 	_, sockPath := startTestDaemon(t)
+	return connectMCPTo(t, sockPath)
+}
 
+// connectMCPTo connects to an MCP server backed by an already-running daemon,
+// for tests that need to touch that daemon directly as well.
+func connectMCPTo(t *testing.T, sockPath string) *mcpsdk.ClientSession {
+	t.Helper()
 	srv := NewMCPServer(NewClientService(sockPath), "test").sdkServer()
 	serverT, clientT := mcpsdk.NewInMemoryTransports()
 
@@ -574,19 +580,7 @@ func TestMCP_ListSeesProcessesStartedOutsideMCP(t *testing.T) {
 		t.Fatalf("cli-side run failed: %s", resp.Error)
 	}
 
-	srv := NewMCPServer(NewClientService(sockPath), "test").sdkServer()
-	serverT, clientT := mcpsdk.NewInMemoryTransports()
-	ctx := context.Background()
-	ss, err := srv.Connect(ctx, serverT, nil)
-	if err != nil {
-		t.Fatalf("server connect: %v", err)
-	}
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "yoink-test", Version: "0"}, nil)
-	cs, err := client.Connect(ctx, clientT, nil)
-	if err != nil {
-		t.Fatalf("client connect: %v", err)
-	}
-	t.Cleanup(func() { cs.Close(); ss.Wait() }) //nolint:errcheck
+	cs := connectMCPTo(t, sockPath)
 
 	var out struct {
 		Processes []domain.ProcessInfo `json:"processes"`

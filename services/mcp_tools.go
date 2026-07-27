@@ -121,47 +121,48 @@ type mcpWaitOutput struct {
 	Processes      []mcpWaitProcess `json:"processes"`
 }
 
-// registerTools wires every tool to its handler on the SDK server.
+// addTool registers one tool. The SDK's AddTool is generic over the tool's
+// input and output types, so handlers cannot be collected into a table; this
+// keeps each registration to a single line instead.
+func addTool[In, Out any](srv *mcpsdk.Server, name, description string, handler mcpsdk.ToolHandlerFor[In, Out]) {
+	mcpsdk.AddTool(srv, &mcpsdk.Tool{Name: name, Description: description}, handler)
+}
+
+// registerTools wires every tool to its handler on the SDK server. The
+// descriptions are the agent-facing docs — they are how a model learns that
+// log(new) is the way to poll and that snapshot, not log, is for TUIs.
 func (s *MCPServer) registerTools(srv *mcpsdk.Server) {
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_run",
-		Description: "Start a command in the background under a real PTY and return immediately with its process id. Use this instead of a blocking shell call for dev servers, builds, test watchers, deploys, and any interactive CLI. Always pass an alias.",
-	}, s.handleRun)
+	addTool(srv, "yoink_run",
+		"Start a command in the background under a real PTY and return immediately with its process id. Use this instead of a blocking shell call for dev servers, builds, test watchers, deploys, and any interactive CLI. Always pass an alias.",
+		s.handleRun)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_ls",
-		Description: "List every process the yoink daemon is tracking, with state, pid, exit code, working directory, and log file. Includes processes started from a human's terminal, not just ones started through MCP.",
-	}, s.handleList)
+	addTool(srv, "yoink_ls",
+		"List every process the yoink daemon is tracking, with state, pid, exit code, working directory, and log file. Includes processes started from a human's terminal, not just ones started through MCP.",
+		s.handleList)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_log",
-		Description: "Read a process's output. Prefer new=true when polling: it returns only the lines produced since your last new=true read, so repeated calls never re-read the same output. Output is a 1000-line ring buffer; for full output, start the process with logFile.",
-	}, s.handleLog)
+	addTool(srv, "yoink_log",
+		"Read a process's output. Prefer new=true when polling: it returns only the lines produced since your last new=true read, so repeated calls never re-read the same output. Output is a 1000-line ring buffer; for full output, start the process with logFile.",
+		s.handleLog)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_send",
-		Description: "Send text or a named key to a running process's stdin — answer a prompt, confirm a y/n, drive an interactive CLI. Use redacted for secrets, and submit for TUI prompts that expect a carriage return.",
-	}, s.handleSend)
+	addTool(srv, "yoink_send",
+		"Send text or a named key to a running process's stdin — answer a prompt, confirm a y/n, drive an interactive CLI. Use redacted for secrets, and submit for TUI prompts that expect a carriage return.",
+		s.handleSend)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_snapshot",
-		Description: "Render a process's current terminal screen as plain text. Use this instead of yoink_log for full-screen TUI programs (vim, htop, ncurses apps), where raw logs are unreadable escape sequences.",
-	}, s.handleSnapshot)
+	addTool(srv, "yoink_snapshot",
+		"Render a process's current terminal screen as plain text. Use this instead of yoink_log for full-screen TUI programs (vim, htop, ncurses apps), where raw logs are unreadable escape sequences.",
+		s.handleSnapshot)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_wait",
-		Description: "Block until the given processes finish, returning their exit codes and any new output. Bounded and resumable: if they are still running when timeoutSeconds elapses this returns done=false and timedOut=true rather than failing, and you can simply call again to keep waiting.",
-	}, s.handleWait)
+	addTool(srv, "yoink_wait",
+		"Block until the given processes finish, returning their exit codes and any new output. Bounded and resumable: if they are still running when timeoutSeconds elapses this returns done=false and timedOut=true rather than failing, and you can simply call again to keep waiting.",
+		s.handleWait)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_kill",
-		Description: "Terminate a running process with SIGTERM, or SIGKILL when force is set.",
-	}, s.handleKill)
+	addTool(srv, "yoink_kill",
+		"Terminate a running process with SIGTERM, or SIGKILL when force is set.",
+		s.handleKill)
 
-	mcpsdk.AddTool(srv, &mcpsdk.Tool{
-		Name:        "yoink_clean",
-		Description: "Remove finished and failed processes from the list. With all=true, also stop and remove processes that are still running. Call this when you are done with a set of background processes.",
-	}, s.handleClean)
+	addTool(srv, "yoink_clean",
+		"Remove finished and failed processes from the list. With all=true, also stop and remove processes that are still running. Call this when you are done with a set of background processes.",
+		s.handleClean)
 }
 
 func (s *MCPServer) handleRun(_ context.Context, _ *mcpsdk.CallToolRequest, in mcpRunInput) (*mcpsdk.CallToolResult, mcpRunOutput, error) {
