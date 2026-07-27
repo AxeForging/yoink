@@ -42,6 +42,7 @@ func main() {
 	killAction := actions.NewKillAction(client)
 	cleanAction := actions.NewCleanAction(client)
 	daemonAction := actions.NewDaemonAction(sockPath)
+	mcpAction := actions.NewMCPAction(client, Version)
 	versionAction := actions.NewVersionAction(Version, BuildTime, GitCommit)
 
 	app := cli.NewApp()
@@ -127,6 +128,11 @@ func main() {
 			Usage:  "Remove finished/failed processes from the list",
 			Flags:  []cli.Flag{allFlag, forceFlag},
 			Action: cleanAction.Execute,
+		},
+		{
+			Name:   "mcp",
+			Usage:  "Serve yoink over the Model Context Protocol on stdio (for AI agents)",
+			Action: mcpAction.Execute,
 		},
 		{
 			Name:   "daemon",

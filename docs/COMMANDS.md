@@ -206,6 +206,43 @@ Aliases: `a`
 
 Detach with `Ctrl+]`.
 
+## AI Agents
+
+### `yoink mcp`
+
+Serve yoink over the [Model Context Protocol](https://modelcontextprotocol.io) on stdio, so an agent manages background processes as native tools instead of shelling out and parsing terminal output.
+
+```bash
+yoink mcp
+```
+
+You do not run this yourself — your MCP client does. Register it once:
+
+```bash
+claude mcp add --scope user yoink -- yoink mcp
+```
+
+The server is a client of the same daemon the CLI uses, so an agent's `yoink_ls` sees processes you started in your own terminal, and vice versa.
+
+Tools:
+
+| Tool | Equivalent command |
+|------|--------------------|
+| `yoink_run` | `yoink run` |
+| `yoink_ls` | `yoink ls --full` |
+| `yoink_log` | `yoink log` (`new: true` for `--new`) |
+| `yoink_send` | `yoink send` / `send-redacted` (`redacted: true`) |
+| `yoink_snapshot` | `yoink snapshot` |
+| `yoink_wait` | `yoink wait` |
+| `yoink_kill` | `yoink kill` |
+| `yoink_clean` | `yoink clean` |
+
+`yoink attach` is not exposed: it needs a real controlling terminal.
+
+`yoink_wait` differs from the CLI in one way. MCP clients cap how long a single tool call may run, so its `timeoutSeconds` defaults to `30` and is clamped to `55`. Hitting that bound is **not an error** — the call returns `done: false, timedOut: true` along with the current state and any output drained so far, and the agent calls again to keep waiting. Because draining uses the same cursor as `log --new`, resuming never re-reads output it already saw.
+
+See [Install](../README.md#use-with-ai-agents-mcp) for registering with other MCP clients.
+
 ## Other Commands
 
 ### `yoink version`
