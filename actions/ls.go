@@ -49,7 +49,8 @@ func (a *LsAction) Execute(c *cli.Context) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, strings.Join(header, "\t"))
+	// tabwriter buffers writes; any error surfaces from Flush below.
+	fmt.Fprintln(w, strings.Join(header, "\t")) //nolint:errcheck
 	for _, p := range resp.Processes {
 		exitStr := "-"
 		if p.State != domain.StateRunning {
@@ -81,10 +82,9 @@ func (a *LsAction) Execute(c *cli.Context) error {
 		}
 		row = append(row, command)
 
-		fmt.Fprintln(w, strings.Join(row, "\t"))
+		fmt.Fprintln(w, strings.Join(row, "\t")) //nolint:errcheck
 	}
-	w.Flush()
-	return nil
+	return w.Flush()
 }
 
 func truncate(s string, max int) string {

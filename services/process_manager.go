@@ -278,14 +278,9 @@ type SendOptions struct {
 // SendInput writes text to the process PTY.
 // By default it appends a newline; use SendOptions to customise behaviour.
 func (pm *ProcessManager) SendInput(id int, input string, opts SendOptions) error {
-	pm.mu.RLock()
-	mp, ok := pm.processes[id]
-	pm.mu.RUnlock()
-	if !ok {
-		return fmt.Errorf("process %d not found", id)
-	}
-	if mp.info.State != domain.StateRunning {
-		return fmt.Errorf("process %d is not running", id)
+	mp, err := pm.lookupRunning(id)
+	if err != nil {
+		return err
 	}
 
 	// If redacted, register pattern to catch PTY echo
@@ -460,16 +455,31 @@ func renderScreen(term vt10x.Terminal) string {
 	return strings.Join(lines[:end], "\n")
 }
 
-// Kill sends a signal to the process. Use force=true for SIGKILL.
-func (pm *ProcessManager) Kill(id int, force bool) error {
+// lookupRunning returns the process with the given id, or an error if it does
+// not exist or has already finished.
+//
+// The state check happens under the same read lock as the map lookup:
+// monitorProcess writes info.State from its own goroutine the instant the
+// process exits, so reading it after releasing the lock is a data race.
+func (pm *ProcessManager) lookupRunning(id int) (*managedProcess, error) {
 	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
 	mp, ok := pm.processes[id]
-	pm.mu.RUnlock()
 	if !ok {
-		return fmt.Errorf("process %d not found", id)
+		return nil, fmt.Errorf("process %d not found", id)
 	}
 	if mp.info.State != domain.StateRunning {
-		return fmt.Errorf("process %d is not running", id)
+		return nil, fmt.Errorf("process %d is not running", id)
+	}
+	return mp, nil
+}
+
+// Kill sends a signal to the process. Use force=true for SIGKILL.
+func (pm *ProcessManager) Kill(id int, force bool) error {
+	mp, err := pm.lookupRunning(id)
+	if err != nil {
+		return err
 	}
 	if force {
 		return KillProcess(mp.cmd.Process)
@@ -479,14 +489,9 @@ func (pm *ProcessManager) Kill(id int, force bool) error {
 
 // GetPTY returns the PTY file descriptor for attach operations.
 func (pm *ProcessManager) GetPTY(id int) (io.ReadWriteCloser, error) {
-	pm.mu.RLock()
-	mp, ok := pm.processes[id]
-	pm.mu.RUnlock()
-	if !ok {
-		return nil, fmt.Errorf("process %d not found", id)
-	}
-	if mp.info.State != domain.StateRunning {
-		return nil, fmt.Errorf("process %d is not running", id)
+	mp, err := pm.lookupRunning(id)
+	if err != nil {
+		return nil, err
 	}
 	return mp.pty, nil
 }
@@ -526,7 +531,7 @@ func (pm *ProcessManager) Clean() int {
 	count := 0
 	for id, mp := range pm.processes {
 		if mp.info.State != domain.StateRunning {
-			mp.pty.Close()
+			_ = mp.pty.Close()
 			if mp.info.Alias != "" {
 				delete(pm.aliases, mp.info.Alias)
 			}
@@ -583,6 +588,6 @@ func (pm *ProcessManager) Shutdown() {
 		if mp.info.State == domain.StateRunning {
 			TerminateProcess(mp.cmd.Process) //nolint:errcheck
 		}
-		mp.pty.Close()
+		_ = mp.pty.Close()
 	}
 }

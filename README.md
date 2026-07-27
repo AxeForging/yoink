@@ -17,6 +17,7 @@ Run interactive commands in the background, inspect their output, send input, ca
 - Read only new output with `log --new`, which is useful for polling and test reports.
 - Render TUI apps with `snapshot` instead of raw escape-sequence logs.
 - Coordinate dev servers, test runners, deploys, tunnels, model servers, and AI coding agents.
+- Hand the whole thing to an agent as native MCP tools with `yoink mcp`, sharing one daemon with your own terminal.
 
 See [Why yoink?](docs/WHY.md) for the deeper positioning and comparisons.
 
@@ -65,6 +66,32 @@ steps:
 
 Wall-clock becomes `max(build + typecheck, browser download)` instead of the sum — the gain comes entirely from the work you do *between* `run` and `wait`. The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`; Linux and macOS runners are supported.
 
+### Use with AI agents (MCP)
+
+The MCP server is built into the binary as `yoink mcp` — nothing extra to download. Register it once:
+
+```bash
+# Claude Code, available in every project
+claude mcp add --scope user yoink -- yoink mcp
+
+# or scoped to one repo (writes .mcp.json — commit it to share with your team)
+claude mcp add --scope project yoink -- yoink mcp
+```
+
+For clients configured by file (`.mcp.json`, `.cursor/mcp.json`, Windsurf, Zed):
+
+```json
+{
+  "mcpServers": {
+    "yoink": { "command": "yoink", "args": ["mcp"] }
+  }
+}
+```
+
+VS Code uses `servers` instead of `mcpServers` in `.vscode/mcp.json`. GUI apps such as Claude Desktop do not inherit your shell `PATH`, so give those the absolute path (`/usr/local/bin/yoink`).
+
+Agents get eight tools — `yoink_run`, `yoink_ls`, `yoink_log`, `yoink_send`, `yoink_snapshot`, `yoink_wait`, `yoink_kill`, `yoink_clean` — returning structured state instead of a text table. The server talks to the same daemon as the CLI, so an agent can inspect a dev server you started in your own terminal, and you can `yoink attach` to a process an agent started. See [the command reference](docs/COMMANDS.md#yoink-mcp) for details.
+
 ## Quickstart
 
 ```bash
@@ -105,6 +132,7 @@ yoink clean
 | Reattach interactively | `yoink attach name` |
 | Stop a process | `yoink kill name` |
 | Stop and remove everything | `yoink clean --all` |
+| Serve to an AI agent over MCP | `yoink mcp` |
 
 ## Documentation
 
@@ -126,6 +154,7 @@ yoink runs a lightweight daemon that holds PTY sessions open for background proc
 | send --type / --delay / --no-enter / --key | Yes | Yes | Planned |
 | snapshot (VT100 screen render) | Yes | Yes | Planned |
 | attach (PTY reattach) | Yes | Yes | Planned |
+| mcp (Model Context Protocol server) | Yes | Yes | Planned |
 
 ## Development
 

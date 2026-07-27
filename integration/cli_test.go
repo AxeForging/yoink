@@ -71,7 +71,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	for time.Now().Before(deadline) {
 		conn, err := net.Dial("unix", sockPath)
 		if err == nil {
-			conn.Close()
+			conn.Close() //nolint:errcheck
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -81,11 +81,11 @@ func newTestEnv(t *testing.T) *testEnv {
 		// Shutdown daemon via socket
 		conn, err := net.Dial("unix", sockPath)
 		if err == nil {
-			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown})
-			conn.Close()
+			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown}) //nolint:errcheck
+			conn.Close()                                                                 //nolint:errcheck
 		}
-		daemonCmd.Process.Kill()
-		daemonCmd.Wait()
+		daemonCmd.Process.Kill() //nolint:errcheck
+		daemonCmd.Wait()         //nolint:errcheck
 	})
 
 	return env
@@ -116,11 +116,11 @@ func (e *testEnv) sendDaemonRequest(req domain.DaemonRequest) domain.DaemonRespo
 	if err != nil {
 		e.t.Fatalf("cannot connect to daemon: %v", err)
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
-	json.NewEncoder(conn).Encode(req)
+	defer conn.Close()                                //nolint:errcheck
+	conn.SetDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck
+	json.NewEncoder(conn).Encode(req)                 //nolint:errcheck
 	var resp domain.DaemonResponse
-	json.NewDecoder(conn).Decode(&resp)
+	json.NewDecoder(conn).Decode(&resp) //nolint:errcheck
 	return resp
 }
 

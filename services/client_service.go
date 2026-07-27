@@ -35,7 +35,8 @@ func (cs *ClientService) Connect() (net.Conn, error) {
 func (cs *ClientService) EnsureDaemon() error {
 	conn, err := net.DialTimeout("unix", cs.SockPath, 500*time.Millisecond)
 	if err == nil {
-		conn.Close()
+		// Only probing whether the daemon is up; the connection is discarded.
+		_ = conn.Close()
 		return nil
 	}
 
@@ -58,16 +59,17 @@ func (cs *ClientService) EnsureDaemon() error {
 	cmd.SysProcAttr = DaemonSysProcAttr()
 
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		_ = logFile.Close()
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
-	logFile.Close()
+	// The daemon holds its own descriptor now.
+	_ = logFile.Close()
 
 	for i := 0; i < 30; i++ {
 		time.Sleep(100 * time.Millisecond)
 		conn, err := net.DialTimeout("unix", cs.SockPath, 500*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil
 		}
 	}
@@ -96,7 +98,7 @@ func (cs *ClientService) Do(req domain.DaemonRequest) (domain.DaemonResponse, er
 	if err != nil {
 		return domain.DaemonResponse{}, err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := cs.SendRequest(conn, req); err != nil {
 		return domain.DaemonResponse{}, err

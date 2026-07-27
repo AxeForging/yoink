@@ -37,7 +37,7 @@ func (a *AttachAction) Execute(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
 	req := domain.DaemonRequest{Type: domain.ReqAttach, ID: id, Alias: alias}
 	if err := a.client.SendRequest(conn, req); err != nil {
@@ -77,14 +77,14 @@ func (a *AttachAction) Execute(c *cli.Context) error {
 			if n > 0 {
 				for i := 0; i < n; i++ {
 					if buf[i] == 0x1d { // Ctrl+]
-						conn.Close()
+						conn.Close() //nolint:errcheck
 						return
 					}
 				}
 				conn.Write(buf[:n]) //nolint:errcheck
 			}
 			if err != nil {
-				conn.Close()
+				conn.Close() //nolint:errcheck
 				return
 			}
 		}
