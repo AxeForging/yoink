@@ -531,7 +531,7 @@ func (pm *ProcessManager) Clean() int {
 	count := 0
 	for id, mp := range pm.processes {
 		if mp.info.State != domain.StateRunning {
-			mp.pty.Close()
+			_ = mp.pty.Close()
 			if mp.info.Alias != "" {
 				delete(pm.aliases, mp.info.Alias)
 			}
@@ -588,6 +588,6 @@ func (pm *ProcessManager) Shutdown() {
 		if mp.info.State == domain.StateRunning {
 			TerminateProcess(mp.cmd.Process) //nolint:errcheck
 		}
-		mp.pty.Close()
+		_ = mp.pty.Close()
 	}
 }

@@ -153,9 +153,9 @@ func TestProcessManager_List(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("echo one", "", SpawnOptions{})
-	pm.Spawn("echo two", "", SpawnOptions{})
-	pm.Spawn("sleep 300", "", SpawnOptions{})
+	pm.Spawn("echo one", "", SpawnOptions{})  //nolint:errcheck
+	pm.Spawn("echo two", "", SpawnOptions{})  //nolint:errcheck
+	pm.Spawn("sleep 300", "", SpawnOptions{}) //nolint:errcheck
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -169,7 +169,7 @@ func TestProcessManager_Clean(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("echo done-quick", "", SpawnOptions{})
+	pm.Spawn("echo done-quick", "", SpawnOptions{}) //nolint:errcheck
 	id2, _ := pm.Spawn("sleep 300", "", SpawnOptions{})
 
 	// Wait for echo to finish
@@ -249,7 +249,7 @@ func TestProcessManager_LabeledOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "hello", SendOptions{})
+	pm.SendInput(id, "hello", SendOptions{}) //nolint:errcheck
 	time.Sleep(500 * time.Millisecond)
 
 	output, _ := pm.GetOutput(id, 100)
@@ -271,7 +271,7 @@ func TestProcessManager_SendRedacted(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "super-secret-token", SendOptions{Redacted: true})
+	pm.SendInput(id, "super-secret-token", SendOptions{Redacted: true}) //nolint:errcheck
 	time.Sleep(500 * time.Millisecond)
 
 	// Formatted output should show redacted
@@ -313,7 +313,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	time.Sleep(200 * time.Millisecond)
-	pm.SendInput(id, "first", SendOptions{})
+	pm.SendInput(id, "first", SendOptions{}) //nolint:errcheck
 	waitForOutput(t, pm, id, "reply-first", 5*time.Second)
 	// Let PTY echo settle
 	time.Sleep(200 * time.Millisecond)
@@ -337,7 +337,7 @@ func TestProcessManager_GetNewOutput(t *testing.T) {
 	}
 
 	// Write more
-	pm.SendInput(id, "second", SendOptions{})
+	pm.SendInput(id, "second", SendOptions{}) //nolint:errcheck
 	waitForOutput(t, pm, id, "reply-second", 5*time.Second)
 	time.Sleep(200 * time.Millisecond)
 
@@ -407,7 +407,7 @@ func TestProcessManager_ResolveID_ByNumericID(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	pm.Spawn("sleep 300", "", SpawnOptions{})
+	pm.Spawn("sleep 300", "", SpawnOptions{}) //nolint:errcheck
 
 	resolved, err := pm.ResolveID("1")
 	if err != nil {

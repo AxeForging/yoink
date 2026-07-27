@@ -44,7 +44,7 @@ func startMCP(t *testing.T) *mcpsdk.ClientSession {
 		// Shut down the daemon the MCP server auto-started.
 		if conn, derr := net.Dial("unix", sockPath); derr == nil {
 			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown}) //nolint:errcheck
-			conn.Close()
+			conn.Close()                                                                 //nolint:errcheck
 		}
 	})
 	return cs
@@ -198,7 +198,7 @@ func TestIntegration_MCPAndCLIShareTheSameDaemon(t *testing.T) {
 		cs.Close() //nolint:errcheck
 		if conn, derr := net.Dial("unix", sockPath); derr == nil {
 			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown}) //nolint:errcheck
-			conn.Close()
+			conn.Close()                                                                 //nolint:errcheck
 		}
 	}()
 

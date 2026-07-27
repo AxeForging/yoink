@@ -138,10 +138,10 @@ func (a *WaitAction) drainOutput(id int, alias, label string, multi bool) error 
 	if resp.Output != "" {
 		if multi {
 			for _, line := range strings.Split(resp.Output, "\n") {
-				fmt.Fprintf(os.Stdout, "[%s] %s\n", label, line)
+				fmt.Fprintf(os.Stdout, "[%s] %s\n", label, line) //nolint:errcheck
 			}
 		} else {
-			fmt.Fprintln(os.Stdout, resp.Output)
+			fmt.Fprintln(os.Stdout, resp.Output) //nolint:errcheck
 		}
 	}
 	return nil

@@ -22,7 +22,7 @@ func startTestDaemon(t *testing.T) (*DaemonServer, string) {
 	log := zerolog.New(zerolog.NewTestWriter(t))
 	server := NewDaemonServer(sockPath, pm, log)
 
-	go server.Start()
+	go server.Start() //nolint:errcheck
 
 	// Wait for socket to be ready
 	deadline := time.Now().Add(3 * time.Second)
@@ -31,10 +31,10 @@ func startTestDaemon(t *testing.T) (*DaemonServer, string) {
 			// Socket file exists, try a quick list request to verify
 			conn, err := net.Dial("unix", sockPath)
 			if err == nil {
-				json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqList})
+				json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqList}) //nolint:errcheck
 				var resp domain.DaemonResponse
-				json.NewDecoder(conn).Decode(&resp)
-				conn.Close()
+				json.NewDecoder(conn).Decode(&resp) //nolint:errcheck
+				conn.Close()                        //nolint:errcheck
 				if resp.Success {
 					break
 				}
@@ -56,9 +56,9 @@ func sendRequest(t *testing.T, sockPath string, req domain.DaemonRequest) domain
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	conn.SetDeadline(time.Now().Add(5 * time.Second)) //nolint:errcheck
 
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		t.Fatalf("failed to send request: %v", err)

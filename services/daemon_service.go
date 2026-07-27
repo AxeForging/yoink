@@ -35,7 +35,8 @@ func NewDaemonServer(sockPath string, pm *ProcessManager, log zerolog.Logger) *D
 
 // Start begins listening for client connections. Blocks until Stop is called.
 func (ds *DaemonServer) Start() error {
-	os.Remove(ds.sockPath)
+	// Clear a socket left behind by a previous run; absence is the normal case.
+	_ = os.Remove(ds.sockPath)
 
 	listener, err := net.Listen("unix", ds.sockPath)
 	if err != nil {
@@ -64,17 +65,17 @@ func (ds *DaemonServer) Start() error {
 // Stop closes the listener and removes the socket file.
 func (ds *DaemonServer) Stop() {
 	if ds.listener != nil {
-		ds.listener.Close()
+		_ = ds.listener.Close()
 	}
 	ds.wg.Wait()
-	os.Remove(ds.sockPath)
+	_ = os.Remove(ds.sockPath)
 }
 
 func (ds *DaemonServer) handleConnection(conn net.Conn) {
 	var req domain.DaemonRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {
 		ds.log.Error().Err(err).Msg("decode error")
-		conn.Close()
+		conn.Close() //nolint:errcheck
 		return
 	}
 
@@ -83,7 +84,7 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 		id, err := ds.pm.ResolveID(req.Alias)
 		if err != nil {
 			ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
-			conn.Close()
+			conn.Close() //nolint:errcheck
 			return
 		}
 		req.ID = id
@@ -114,7 +115,7 @@ func (ds *DaemonServer) handleConnection(conn net.Conn) {
 		return
 	default:
 		ds.sendResponse(conn, domain.DaemonResponse{Error: "unknown request type"})
-		conn.Close()
+		conn.Close() //nolint:errcheck
 	}
 }
 
@@ -123,7 +124,7 @@ func (ds *DaemonServer) sendResponse(conn net.Conn, resp domain.DaemonResponse) 
 }
 
 func (ds *DaemonServer) handleRun(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	id, err := ds.pm.Spawn(req.Command, req.Alias, SpawnOptions{Cwd: req.Cwd, LogFile: req.LogFile})
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
@@ -134,13 +135,13 @@ func (ds *DaemonServer) handleRun(conn net.Conn, req domain.DaemonRequest) {
 }
 
 func (ds *DaemonServer) handleList(conn net.Conn) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	processes := ds.pm.List()
 	ds.sendResponse(conn, domain.DaemonResponse{Success: true, Processes: processes})
 }
 
 func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	var output string
 	var err error
 	if req.New {
@@ -160,7 +161,7 @@ func (ds *DaemonServer) handleLog(conn net.Conn, req domain.DaemonRequest) {
 }
 
 func (ds *DaemonServer) handleSend(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	opts := SendOptions{
 		Redacted:  req.Redacted,
 		TypeMode:  req.TypeMode,
@@ -179,7 +180,7 @@ func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
 	ptmx, err := ds.pm.GetPTY(req.ID)
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
-		conn.Close()
+		conn.Close() //nolint:errcheck
 		return
 	}
 
@@ -199,11 +200,11 @@ func (ds *DaemonServer) handleAttach(conn net.Conn, req domain.DaemonRequest) {
 			break
 		}
 	}
-	conn.Close()
+	conn.Close() //nolint:errcheck
 }
 
 func (ds *DaemonServer) handleSnapshot(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	output, err := ds.pm.Snapshot(req.ID)
 	if err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
@@ -213,7 +214,7 @@ func (ds *DaemonServer) handleSnapshot(conn net.Conn, req domain.DaemonRequest) 
 }
 
 func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	if err := ds.pm.Kill(req.ID, req.Force); err != nil {
 		ds.sendResponse(conn, domain.DaemonResponse{Error: err.Error()})
 		return
@@ -222,7 +223,7 @@ func (ds *DaemonServer) handleKill(conn net.Conn, req domain.DaemonRequest) {
 }
 
 func (ds *DaemonServer) handleClean(conn net.Conn, req domain.DaemonRequest) {
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck
 	var count int
 	if req.All {
 		count = ds.pm.CleanAll(req.Force)
@@ -234,13 +235,13 @@ func (ds *DaemonServer) handleClean(conn net.Conn, req domain.DaemonRequest) {
 
 func (ds *DaemonServer) handleShutdown(conn net.Conn) {
 	ds.sendResponse(conn, domain.DaemonResponse{Success: true})
-	conn.Close()
+	conn.Close() //nolint:errcheck
 	ds.pm.Shutdown()
 	// Signal the main loop to stop without waiting for this goroutine
 	if ds.listener != nil {
-		ds.listener.Close()
+		_ = ds.listener.Close()
 	}
-	os.Remove(ds.sockPath)
+	_ = os.Remove(ds.sockPath)
 	close(ds.done)
 }
 
