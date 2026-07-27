@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1190,5 +1191,64 @@ func TestProcessManager_CleanAll_ForceKillsSigtermIgnoringProcess(t *testing.T) 
 	}
 	if remaining := pm.List(); len(remaining) != 0 {
 		t.Errorf("expected process removed after force CleanAll, got %d remaining", len(remaining))
+	}
+}
+
+// A managed process can exit at any instant, including while a client is
+// sending it input or signalling it. monitorProcess writes info.State from its
+// own goroutine under the write lock, so every reader must check the state
+// under the read lock rather than after releasing it.
+//
+// Regression test for a race between monitorProcess and SendInput/Kill/GetPTY.
+func TestProcessManager_StateChecksAreSafeWhileProcessExits(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	// Short-lived processes maximise the chance that the state flips to done
+	// exactly while the calls below are reading it.
+	for i := 0; i < 25; i++ {
+		id, err := pm.Spawn("sh -c 'exit 0'", "", SpawnOptions{})
+		if err != nil {
+			t.Fatalf("Spawn failed: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		calls := []func(){
+			func() { pm.SendInput(id, "input", SendOptions{}) }, //nolint:errcheck
+			func() { pm.Kill(id, false) },                       //nolint:errcheck
+			func() { pm.GetPTY(id) },                            //nolint:errcheck
+			func() { pm.List() },
+		}
+		for _, call := range calls {
+			wg.Add(1)
+			go func(fn func()) {
+				defer wg.Done()
+				fn()
+			}(call)
+		}
+		wg.Wait()
+	}
+}
+
+// Once a process has exited, the state guards must reject operations that only
+// make sense on a live PTY.
+func TestProcessManager_RejectsOperationsOnFinishedProcess(t *testing.T) {
+	pm := NewProcessManager(100)
+	defer pm.Shutdown()
+
+	id, err := pm.Spawn("sh -c 'echo done'", "", SpawnOptions{})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	waitForState(t, pm, id, domain.StateDone, 5*time.Second)
+
+	if err := pm.SendInput(id, "too late", SendOptions{}); err == nil {
+		t.Error("expected SendInput to reject a finished process")
+	}
+	if err := pm.Kill(id, false); err == nil {
+		t.Error("expected Kill to reject a finished process")
+	}
+	if _, err := pm.GetPTY(id); err == nil {
+		t.Error("expected GetPTY to reject a finished process")
 	}
 }
