@@ -102,6 +102,30 @@ func TestIntegration_Windows_KillStopsTheWholeProcessTree(t *testing.T) {
 	t.Fatal("ping.exe survived yoink kill: the shell was killed but not its child")
 }
 
+// The job is kill-on-close: if the daemon dies without cleaning up, the OS
+// closes its handles and takes the managed tree down instead of leaking it.
+func TestIntegration_Windows_DaemonCrashDoesNotLeakChildren(t *testing.T) {
+	env := newTestEnv(t)
+	const marker = "127.0.0.43"
+
+	if out, err := env.run("run", "--alias", "orphan", "ping -n 300 "+marker); err != nil {
+		t.Fatalf("run failed: %v\n%s", err, out)
+	}
+	env.waitFor("log", "orphan", marker)
+
+	if err := env.daemon.Process.Kill(); err != nil {
+		t.Fatalf("kill daemon: %v", err)
+	}
+	env.daemon.Wait() //nolint:errcheck
+
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if !pingAlive(t, marker) {
+			return
+		}
+	}
+	t.Fatal("ping.exe outlived the daemon: the job did not kill its tree on close")
+}
+
 func pingAlive(t *testing.T, marker string) bool {
 	t.Helper()
 	out, err := exec.Command("powershell", "-NoProfile", "-Command",

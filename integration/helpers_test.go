@@ -56,6 +56,7 @@ type testEnv struct {
 	bin      string
 	sockPath string
 	sockDir  string
+	daemon   *exec.Cmd
 	t        *testing.T
 }
 
@@ -80,6 +81,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	if err := daemonCmd.Start(); err != nil {
 		t.Fatalf("failed to start daemon: %v", err)
 	}
+	env.daemon = daemonCmd
 
 	// Wait for socket
 	deadline := time.Now().Add(5 * time.Second)

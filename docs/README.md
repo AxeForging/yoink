@@ -59,4 +59,4 @@ Client-daemon communication uses JSON over Unix socket. Each connection handles 
 
 PTY operations are abstracted via build tags:
 - `platform_unix.go`: Uses `creack/pty` for Linux and macOS
-- `platform_windows.go`: ConPTY via `golang.org/x/sys/windows`, `cmd.exe /s /c` as the shell, tree kill via `taskkill /T /F`
+- `platform_windows.go`: ConPTY via `golang.org/x/sys/windows`, `cmd.exe /s /c` as the shell, each child in a kill-on-close Job Object so `kill` stops the whole tree

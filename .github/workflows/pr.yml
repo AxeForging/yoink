@@ -28,7 +28,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.12"
+          go-version: "1.26.11"
           cache: true
 
       - name: Build candidate and install external quality gates
@@ -63,7 +63,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.12"
+          go-version: "1.26.11"
           cache: true
 
       - name: Test
@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.25.12"
+          go-version: "1.26.11"
           cache: true
 
       - name: Build yoink

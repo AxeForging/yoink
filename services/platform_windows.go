@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -34,13 +33,19 @@ func ShellCommand(command string) *exec.Cmd {
 }
 
 // conPTY is a Windows pseudo console: Read yields the rendered VT output,
-// Write feeds keyboard input.
+// Write feeds keyboard input. The child runs inside a Job Object so its whole
+// tree can be killed without ever touching a recycled PID.
 type conPTY struct {
 	hpc       windows.Handle
+	job       windows.Handle
+	proc      *os.Process
 	in        *os.File // our end of the console's input pipe
 	out       *os.File // our end of the console's output pipe
 	closeOnce sync.Once
 }
+
+// jobs maps a started process to its Job Object for KillProcess.
+var jobs sync.Map // *os.Process -> windows.Handle
 
 func (c *conPTY) Read(p []byte) (int, error)  { return c.out.Read(p) }
 func (c *conPTY) Write(p []byte) (int, error) { return c.in.Write(p) }
@@ -52,10 +57,35 @@ func (c *conPTY) ProcessExited() {
 	c.closeOnce.Do(func() { windows.ClosePseudoConsole(c.hpc) })
 }
 
+// Close releases the console and the job. The job is kill-on-close, so any
+// leftover descendants die with it, as a PTY hangup does on Unix.
 func (c *conPTY) Close() error {
 	c.ProcessExited()
+	if c.proc != nil {
+		jobs.Delete(c.proc)
+	}
+	if c.job != 0 {
+		_ = windows.CloseHandle(c.job)
+	}
 	_ = c.in.Close()
 	return c.out.Close()
+}
+
+// newKillOnCloseJob creates a Job Object that kills its processes when its
+// last handle closes, so a crashed daemon cannot leak children.
+func newKillOnCloseJob() (windows.Handle, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(job, windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)), uint32(unsafe.Sizeof(info))); err != nil {
+		_ = windows.CloseHandle(job)
+		return 0, err
+	}
+	return job, nil
 }
 
 // StartProcessWithPTY starts cmd attached to a ConPTY sized to match the VT
@@ -90,6 +120,9 @@ func StartProcessWithPTY(cmd *exec.Cmd) (_ *conPTY, err error) {
 			_ = c.Close()
 		}
 	}()
+	if c.job, err = newKillOnCloseJob(); err != nil {
+		return nil, fmt.Errorf("create job object: %w", err)
+	}
 
 	attrs, err := windows.NewProcThreadAttributeList(1)
 	if err != nil {
@@ -122,18 +155,30 @@ func StartProcessWithPTY(cmd *exec.Cmd) (_ *conPTY, err error) {
 		}
 	}
 
+	// Start suspended so the process is in the job before it can spawn children.
 	var pi windows.ProcessInformation
 	if err := windows.CreateProcess(nil, cmdLinePtr, nil, nil, false,
-		windows.EXTENDED_STARTUPINFO_PRESENT, nil, dirPtr, &si.StartupInfo, &pi); err != nil {
+		windows.EXTENDED_STARTUPINFO_PRESENT|windows.CREATE_SUSPENDED, nil, dirPtr, &si.StartupInfo, &pi); err != nil {
 		return nil, fmt.Errorf("create process: %w", err)
 	}
 	defer windows.CloseHandle(pi.Thread) //nolint:errcheck
 	// Our handle keeps the PID valid until FindProcess has opened its own.
 	defer windows.CloseHandle(pi.Process) //nolint:errcheck
 
+	if err := windows.AssignProcessToJobObject(c.job, pi.Process); err != nil {
+		_ = windows.TerminateProcess(pi.Process, 1)
+		return nil, fmt.Errorf("assign job object: %w", err)
+	}
 	if cmd.Process, err = os.FindProcess(int(pi.ProcessId)); err != nil {
+		_ = windows.TerminateProcess(pi.Process, 1)
 		return nil, fmt.Errorf("open process: %w", err)
 	}
+	if _, err := windows.ResumeThread(pi.Thread); err != nil {
+		_ = windows.TerminateProcess(pi.Process, 1)
+		return nil, fmt.Errorf("resume process: %w", err)
+	}
+	c.proc = cmd.Process
+	jobs.Store(cmd.Process, c.job)
 	return c, nil
 }
 
@@ -152,10 +197,10 @@ func TerminateProcess(p *os.Process) error {
 	return KillProcess(p)
 }
 
-// KillProcess force-kills the process and all its descendants.
+// KillProcess force-kills the process and all its descendants via its job.
 func KillProcess(p *os.Process) error {
-	if err := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(p.Pid)).Run(); err != nil {
-		return p.Kill()
+	if job, ok := jobs.Load(p); ok {
+		return windows.TerminateJobObject(job.(windows.Handle), 1)
 	}
-	return nil
+	return p.Kill()
 }
