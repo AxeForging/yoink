@@ -51,6 +51,31 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.12"
+          cache: true
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Setup action installs a runnable binary
+        uses: ./
+
+      - name: Installed binary runs
+        shell: bash
+        run: yoink version
+
   e2e:
     runs-on: ubuntu-latest
     steps:

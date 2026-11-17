@@ -28,7 +28,8 @@ runs:
         case "${{ runner.os }}" in
           Linux)  OS="linux" ;;
           macOS)  OS="darwin" ;;
-          *) echo "::error::yoink does not support ${{ runner.os }} runners yet (Linux and macOS only)"; exit 1 ;;
+          Windows) OS="windows" ;;
+          *) echo "::error::unsupported runner OS: ${{ runner.os }}"; exit 1 ;;
         esac
 
         # Detect arch
@@ -52,21 +53,27 @@ runs:
           echo "::error::could not resolve a yoink version to install"; exit 1
         fi
 
-        URL="https://github.com/AxeForging/yoink/releases/download/${VERSION}/yoink-${OS}-${ARCH}.tar.gz"
+        EXT="tar.gz"; BIN="yoink"
+        if [ "$OS" = "windows" ]; then EXT="zip"; BIN="yoink.exe"; fi
+        URL="https://github.com/AxeForging/yoink/releases/download/${VERSION}/yoink-${OS}-${ARCH}.${EXT}"
         echo "Downloading yoink ${VERSION} for ${OS}-${ARCH}"
         echo "  $URL"
 
         TMP="$(mktemp -d)"
-        curl -sSL --fail "$URL" -o "$TMP/yoink.tar.gz"
-        tar -xzf "$TMP/yoink.tar.gz" -C "$TMP"
+        curl -sSL --fail "$URL" -o "$TMP/yoink.${EXT}"
+        if [ "$EXT" = "zip" ]; then
+          unzip -q "$TMP/yoink.zip" -d "$TMP"
+        else
+          tar -xzf "$TMP/yoink.tar.gz" -C "$TMP"
+        fi
 
         INSTALL_DIR="$HOME/.yoink/bin"
         mkdir -p "$INSTALL_DIR"
-        mv "$TMP/yoink" "$INSTALL_DIR/yoink"
-        chmod +x "$INSTALL_DIR/yoink"
+        mv "$TMP/$BIN" "$INSTALL_DIR/$BIN"
+        chmod +x "$INSTALL_DIR/$BIN"
         rm -rf "$TMP"
 
         echo "$INSTALL_DIR" >> "$GITHUB_PATH"
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-        echo "path=${INSTALL_DIR}/yoink" >> "$GITHUB_OUTPUT"
-        echo "yoink ${VERSION} installed to ${INSTALL_DIR}/yoink"
+        echo "path=${INSTALL_DIR}/${BIN}" >> "$GITHUB_OUTPUT"
+        echo "yoink ${VERSION} installed to ${INSTALL_DIR}/${BIN}"

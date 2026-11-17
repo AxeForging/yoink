@@ -17,75 +17,6 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// startMCP launches the real binary as `yoink mcp` and speaks MCP to it over
-// stdio, exactly as an agent's MCP client would. No daemon is started up front:
-// the server is expected to auto-start one, so an agent needs no setup step.
-func startMCP(t *testing.T) *mcpsdk.ClientSession {
-	t.Helper()
-	bin := buildBinary(t)
-	sockDir := t.TempDir()
-	sockPath := filepath.Join(sockDir, "yoink.sock")
-
-	cmd := exec.Command(bin, "mcp")
-	cmd.Env = append(os.Environ(), "YOINK_SOCK="+sockPath, "HOME="+sockDir)
-	cmd.Stderr = os.Stderr
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "yoink-integration", Version: "0"}, nil)
-	cs, err := client.Connect(ctx, &mcpsdk.CommandTransport{Command: cmd}, nil)
-	if err != nil {
-		cancel()
-		t.Fatalf("connect to yoink mcp over stdio: %v", err)
-	}
-
-	t.Cleanup(func() {
-		cs.Close() //nolint:errcheck
-		cancel()
-		// Shut down the daemon the MCP server auto-started.
-		if conn, derr := net.Dial("unix", sockPath); derr == nil {
-			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown}) //nolint:errcheck
-			conn.Close()                                                                 //nolint:errcheck
-		}
-	})
-	return cs
-}
-
-func callTool(t *testing.T, cs *mcpsdk.ClientSession, name string, args map[string]any, out any) {
-	t.Helper()
-	res, err := cs.CallTool(context.Background(), &mcpsdk.CallToolParams{Name: name, Arguments: args})
-	if err != nil {
-		t.Fatalf("call %s: %v", name, err)
-	}
-	if res.IsError {
-		var sb strings.Builder
-		for _, c := range res.Content {
-			if tc, ok := c.(*mcpsdk.TextContent); ok {
-				sb.WriteString(tc.Text)
-			}
-		}
-		t.Fatalf("%s returned error: %s", name, sb.String())
-	}
-	if out == nil {
-		return
-	}
-	if res.StructuredContent != nil {
-		b, _ := json.Marshal(res.StructuredContent)
-		if err := json.Unmarshal(b, out); err != nil {
-			t.Fatalf("decode %s result: %v", name, err)
-		}
-		return
-	}
-	for _, c := range res.Content {
-		if tc, ok := c.(*mcpsdk.TextContent); ok {
-			if err := json.Unmarshal([]byte(tc.Text), out); err != nil {
-				t.Fatalf("decode %s text result: %v", name, err)
-			}
-			return
-		}
-	}
-	t.Fatalf("%s returned no decodable content", name)
-}
-
 func TestIntegration_MCPStdioHandshakeAndToolList(t *testing.T) {
 	cs := startMCP(t)
 
@@ -172,8 +103,8 @@ func TestIntegration_MCPRunsAndWaitsThroughTheShippedBinary(t *testing.T) {
 // server a human started in their own terminal.
 func TestIntegration_MCPAndCLIShareTheSameDaemon(t *testing.T) {
 	bin := buildBinary(t)
-	sockDir := t.TempDir()
-	sockPath := filepath.Join(sockDir, "yoink.sock")
+	sockPath := shortSockPath(t)
+	sockDir := filepath.Dir(sockPath)
 	env := append(os.Environ(), "YOINK_SOCK="+sockPath, "HOME="+sockDir)
 
 	// Start a process the way a human would, from the CLI.
