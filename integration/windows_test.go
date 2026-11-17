@@ -10,18 +10,19 @@ import (
 	"time"
 )
 
-// waitForLog polls `yoink log` until it contains want.
-func (e *testEnv) waitForLog(ref, want string) string {
+// waitFor polls `yoink <view> <ref>` until it contains want. Use "snapshot"
+// for prompts: the log is line-based, so a prompt without a newline never
+// shows up there until the line completes.
+func (e *testEnv) waitFor(view, ref, want string) {
 	e.t.Helper()
 	var out string
 	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
-		out, _ = e.run("log", ref)
+		out, _ = e.run(view, ref)
 		if strings.Contains(out, want) {
-			return out
+			return
 		}
 	}
-	e.t.Fatalf("timed out waiting for %q in log of %s, got:\n%s", want, ref, out)
-	return ""
+	e.t.Fatalf("timed out waiting for %q in %s of %s, got:\n%s", want, view, ref, out)
 }
 
 func TestIntegration_Windows_RunCapturesOutputThroughConPTY(t *testing.T) {
@@ -33,7 +34,7 @@ func TestIntegration_Windows_RunCapturesOutputThroughConPTY(t *testing.T) {
 	if out, err := env.run("wait", "hello", "--timeout", "20", "--poll", "1"); err != nil {
 		t.Fatalf("wait failed: %v\n%s", err, out)
 	}
-	env.waitForLog("hello", "hello-windows")
+	env.waitFor("log", "hello", "hello-windows")
 
 	// The VT emulator must render ConPTY output into a readable screen.
 	snap, err := env.run("snapshot", "hello")
@@ -67,12 +68,12 @@ func TestIntegration_Windows_SendAnswersAPrompt(t *testing.T) {
 	if out, err := env.run("run", "--alias", "prompt", "set /p NAME=name? & call echo got-%NAME%"); err != nil {
 		t.Fatalf("run failed: %v\n%s", err, out)
 	}
-	env.waitForLog("prompt", "name?")
+	env.waitFor("snapshot", "prompt", "name?")
 
 	if out, err := env.run("send", "prompt", "yoink"); err != nil {
 		t.Fatalf("send failed: %v\n%s", err, out)
 	}
-	env.waitForLog("prompt", "got-yoink")
+	env.waitFor("log", "prompt", "got-yoink")
 }
 
 // cmd.exe does not exec its child, so killing only the shell would orphan the
@@ -84,7 +85,7 @@ func TestIntegration_Windows_KillStopsTheWholeProcessTree(t *testing.T) {
 	if out, err := env.run("run", "--alias", "pinger", "ping -n 300 "+marker); err != nil {
 		t.Fatalf("run failed: %v\n%s", err, out)
 	}
-	env.waitForLog("pinger", marker)
+	env.waitFor("log", "pinger", marker)
 
 	if out, err := env.run("kill", "pinger"); err != nil {
 		t.Fatalf("kill failed: %v\n%s", err, out)

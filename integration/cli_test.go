@@ -468,7 +468,7 @@ func TestIntegration_SendSubmitUsesCarriageReturn(t *testing.T) {
 
 	env.sendDaemonRequest(domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'",
+		Command: "sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1 | tr -s \" \"; sleep 1'",
 		Alias:   "raw-reader",
 	})
 
@@ -545,7 +545,7 @@ func TestIntegration_Snapshot_TopCommand(t *testing.T) {
 	// of how many processes are running. Works on Linux and macOS.
 	env.sendDaemonRequest(domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'",
+		Command: "sh -c '{ top -b -n 1 2>/dev/null || top -l 1 2>/dev/null; } | head -18'",
 		Alias:   "top",
 	})
 
@@ -602,7 +602,7 @@ func TestIntegration_RunUsesClientCwdNotDaemonCwd(t *testing.T) {
 		t.Fatalf("test setup invalid: client dir %q must differ from daemon cwd", wantDir)
 	}
 
-	out, err := env.runFrom(clientDir, "run", "--alias", "pwdcheck", "pwd")
+	out, err := env.runFrom(clientDir, "run", "--alias", "pwdcheck", "pwd -P")
 	if err != nil {
 		t.Fatalf("run failed: %v\noutput: %s", err, out)
 	}
@@ -632,7 +632,7 @@ func TestIntegration_RunCwdFlagOverridesClientCwd(t *testing.T) {
 	}
 	callerDir := t.TempDir()
 
-	out, err := env.runFrom(callerDir, "run", "--alias", "explicit-cwd", "--cwd", explicitDir, "pwd")
+	out, err := env.runFrom(callerDir, "run", "--alias", "explicit-cwd", "--cwd", explicitDir, "pwd -P")
 	if err != nil {
 		t.Fatalf("run --cwd failed: %v\noutput: %s", err, out)
 	}
@@ -662,7 +662,7 @@ func TestIntegration_RunCwdFlagResolvesRelativeToCaller(t *testing.T) {
 		t.Fatalf("EvalSymlinks failed: %v", err)
 	}
 
-	out, err := env.runFrom(callerDir, "run", "--alias", "relative-cwd", "--cwd", "sub", "pwd")
+	out, err := env.runFrom(callerDir, "run", "--alias", "relative-cwd", "--cwd", "sub", "pwd -P")
 	if err != nil {
 		t.Fatalf("run --cwd sub failed: %v\noutput: %s", err, out)
 	}

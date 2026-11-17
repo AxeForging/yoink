@@ -508,7 +508,7 @@ func TestDaemon_RunWithCwd(t *testing.T) {
 
 	resp := sendRequest(t, sockPath, domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "pwd",
+		Command: "pwd -P",
 		Cwd:     dir,
 	})
 	if !resp.Success {
