@@ -16,89 +16,6 @@ import (
 	"github.com/AxeForging/yoink/domain"
 )
 
-func repoRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("cannot get working directory: %v", err)
-	}
-	return filepath.Dir(wd)
-}
-
-func buildBinary(t *testing.T) string {
-	t.Helper()
-	bin := filepath.Join(t.TempDir(), "yoink-test")
-	cmd := exec.Command("go", "build", "-o", bin, ".")
-	cmd.Dir = repoRoot(t)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("build failed: %v\n%s", err, string(out))
-	}
-	return bin
-}
-
-type testEnv struct {
-	bin      string
-	sockPath string
-	sockDir  string
-	t        *testing.T
-}
-
-func newTestEnv(t *testing.T) *testEnv {
-	t.Helper()
-	bin := buildBinary(t)
-	sockDir := t.TempDir()
-	sockPath := filepath.Join(sockDir, "yoink.sock")
-
-	env := &testEnv{
-		bin:      bin,
-		sockPath: sockPath,
-		sockDir:  sockDir,
-		t:        t,
-	}
-
-	// Start daemon
-	daemonCmd := exec.Command(bin, "daemon")
-	daemonCmd.Env = append(os.Environ(), "YOINK_SOCK="+sockPath, "HOME="+sockDir)
-	daemonCmd.Stdout = os.Stderr
-	daemonCmd.Stderr = os.Stderr
-	if err := daemonCmd.Start(); err != nil {
-		t.Fatalf("failed to start daemon: %v", err)
-	}
-
-	// Wait for socket
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		conn, err := net.Dial("unix", sockPath)
-		if err == nil {
-			conn.Close() //nolint:errcheck
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	t.Cleanup(func() {
-		// Shutdown daemon via socket
-		conn, err := net.Dial("unix", sockPath)
-		if err == nil {
-			json.NewEncoder(conn).Encode(domain.DaemonRequest{Type: domain.ReqShutdown}) //nolint:errcheck
-			conn.Close()                                                                 //nolint:errcheck
-		}
-		daemonCmd.Process.Kill() //nolint:errcheck
-		daemonCmd.Wait()         //nolint:errcheck
-	})
-
-	return env
-}
-
-func (e *testEnv) run(args ...string) (string, error) {
-	e.t.Helper()
-	cmd := exec.Command(e.bin, args...)
-	cmd.Env = append(os.Environ(), "YOINK_SOCK="+e.sockPath, "HOME="+e.sockDir)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
 // runFrom runs the CLI as if invoked from dir, to exercise behavior that
 // depends on the client's own working directory (as opposed to the daemon's).
 func (e *testEnv) runFrom(dir string, args ...string) (string, error) {
@@ -551,7 +468,7 @@ func TestIntegration_SendSubmitUsesCarriageReturn(t *testing.T) {
 
 	env.sendDaemonRequest(domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'",
+		Command: "sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1 | tr -s \" \"; sleep 1'",
 		Alias:   "raw-reader",
 	})
 
@@ -628,7 +545,7 @@ func TestIntegration_Snapshot_TopCommand(t *testing.T) {
 	// of how many processes are running. Works on Linux and macOS.
 	env.sendDaemonRequest(domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'",
+		Command: "sh -c '{ top -b -n 1 2>/dev/null || top -l 1 2>/dev/null; } | head -18'",
 		Alias:   "top",
 	})
 
@@ -685,7 +602,7 @@ func TestIntegration_RunUsesClientCwdNotDaemonCwd(t *testing.T) {
 		t.Fatalf("test setup invalid: client dir %q must differ from daemon cwd", wantDir)
 	}
 
-	out, err := env.runFrom(clientDir, "run", "--alias", "pwdcheck", "pwd")
+	out, err := env.runFrom(clientDir, "run", "--alias", "pwdcheck", "pwd -P")
 	if err != nil {
 		t.Fatalf("run failed: %v\noutput: %s", err, out)
 	}
@@ -715,7 +632,7 @@ func TestIntegration_RunCwdFlagOverridesClientCwd(t *testing.T) {
 	}
 	callerDir := t.TempDir()
 
-	out, err := env.runFrom(callerDir, "run", "--alias", "explicit-cwd", "--cwd", explicitDir, "pwd")
+	out, err := env.runFrom(callerDir, "run", "--alias", "explicit-cwd", "--cwd", explicitDir, "pwd -P")
 	if err != nil {
 		t.Fatalf("run --cwd failed: %v\noutput: %s", err, out)
 	}
@@ -745,7 +662,7 @@ func TestIntegration_RunCwdFlagResolvesRelativeToCaller(t *testing.T) {
 		t.Fatalf("EvalSymlinks failed: %v", err)
 	}
 
-	out, err := env.runFrom(callerDir, "run", "--alias", "relative-cwd", "--cwd", "sub", "pwd")
+	out, err := env.runFrom(callerDir, "run", "--alias", "relative-cwd", "--cwd", "sub", "pwd -P")
 	if err != nil {
 		t.Fatalf("run --cwd sub failed: %v\noutput: %s", err, out)
 	}

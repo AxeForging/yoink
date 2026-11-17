@@ -225,7 +225,7 @@ func TestMCP_RunResolvesRelativeCwdAgainstServerDirectory(t *testing.T) {
 		Cwd string `json:"cwd"`
 	}
 	call(t, cs, "yoink_run", map[string]any{
-		"command": "pwd", "alias": "rel", "cwd": ".",
+		"command": "pwd -P", "alias": "rel", "cwd": ".",
 	}, &out)
 
 	if !filepath.IsAbs(out.Cwd) {
@@ -245,7 +245,7 @@ func TestMCP_RunHonorsAbsoluteCwd(t *testing.T) {
 	dir := t.TempDir()
 
 	call(t, cs, "yoink_run", map[string]any{
-		"command": "pwd", "alias": "abs", "cwd": dir,
+		"command": "pwd -P", "alias": "abs", "cwd": dir,
 	}, nil)
 	awaitFinished(t, cs, "abs")
 

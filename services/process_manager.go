@@ -78,7 +78,7 @@ func (pm *ProcessManager) Spawn(command, alias string, opts SpawnOptions) (int, 
 		logFile = f
 	}
 
-	cmd := exec.Command("sh", "-c", command)
+	cmd := ShellCommand(command)
 	cmd.Dir = opts.Cwd
 	ptmx, err := StartProcessWithPTY(cmd)
 	if err != nil {
@@ -198,23 +198,31 @@ func (pm *ProcessManager) captureOutput(mp *managedProcess) {
 }
 
 func (pm *ProcessManager) monitorProcess(mp *managedProcess) {
-	err := mp.cmd.Wait()
+	// Process.Wait rather than cmd.Wait: on Windows the process is started
+	// outside exec.Cmd (ConPTY), so only cmd.Process is populated.
+	state, err := mp.cmd.Process.Wait()
 	now := time.Now()
+
+	// A ConPTY keeps its output pipe open after the child exits; closing the
+	// console lets captureOutput drain the last frame and see EOF.
+	if c, ok := mp.pty.(interface{ ProcessExited() }); ok {
+		c.ProcessExited()
+	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
 	mp.info.FinishedAt = &now
-	if err != nil {
+	switch {
+	case err != nil:
 		mp.info.State = domain.StateFailed
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			mp.info.ExitCode = exitErr.ExitCode()
-		} else {
-			mp.info.ExitCode = -1
-		}
-	} else {
+		mp.info.ExitCode = -1
+	case state.Success():
 		mp.info.State = domain.StateDone
 		mp.info.ExitCode = 0
+	default:
+		mp.info.State = domain.StateFailed
+		mp.info.ExitCode = state.ExitCode()
 	}
 }
 
@@ -317,7 +325,7 @@ func (pm *ProcessManager) SendInput(id int, input string, opts SendOptions) erro
 		return err
 	}
 	if !opts.NoEnter {
-		_, err := mp.pty.Write([]byte("\n"))
+		_, err := mp.pty.Write([]byte(lineEnding))
 		return err
 	}
 	return nil

@@ -17,7 +17,14 @@ import (
 
 func startTestDaemon(t *testing.T) (*DaemonServer, string) {
 	t.Helper()
-	sockPath := filepath.Join(t.TempDir(), "test.sock")
+	// Not t.TempDir(): its path plus a long test name overflows macOS's
+	// 104-byte sun_path limit.
+	sockDir, err := os.MkdirTemp("", "yk")
+	if err != nil {
+		t.Fatalf("create socket dir: %v", err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) }) //nolint:errcheck
+	sockPath := filepath.Join(sockDir, "test.sock")
 	pm := NewProcessManager(100)
 	log := zerolog.New(zerolog.NewTestWriter(t))
 	server := NewDaemonServer(sockPath, pm, log)
@@ -501,7 +508,7 @@ func TestDaemon_RunWithCwd(t *testing.T) {
 
 	resp := sendRequest(t, sockPath, domain.DaemonRequest{
 		Type:    domain.ReqRun,
-		Command: "pwd",
+		Command: "pwd -P",
 		Cwd:     dir,
 	})
 	if !resp.Success {

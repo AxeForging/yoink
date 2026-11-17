@@ -591,7 +591,7 @@ func TestProcessManager_SubmitUsesCarriageReturn(t *testing.T) {
 	pm := NewProcessManager(100)
 	defer pm.Shutdown()
 
-	id, err := pm.Spawn("sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1; sleep 1'", "", SpawnOptions{})
+	id, err := pm.Spawn("sh -c 'stty raw -echo; dd bs=1 count=2 2>/dev/null | od -An -tx1 | tr -s \" \"; sleep 1'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -818,7 +818,7 @@ func TestProcessManager_Snapshot_TopCommand(t *testing.T) {
 	// of how many processes are running. Works on both Linux (top -b -n 1) and
 	// macOS (top -l 1). The column-header row (with "PID") is always within
 	// the first 10 lines of top output, well inside the 18-line window.
-	id, err := pm.Spawn("sh -c 'top -b -n 1 2>/dev/null | head -18 || top -l 1 2>/dev/null | head -18'", "", SpawnOptions{})
+	id, err := pm.Spawn("sh -c '{ top -b -n 1 2>/dev/null || top -l 1 2>/dev/null; } | head -18'", "", SpawnOptions{})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}
@@ -1007,7 +1007,7 @@ func TestProcessManager_Spawn_UsesGivenCwd(t *testing.T) {
 		t.Fatalf("EvalSymlinks failed: %v", err)
 	}
 
-	id, err := pm.Spawn("pwd", "", SpawnOptions{Cwd: dir})
+	id, err := pm.Spawn("pwd -P", "", SpawnOptions{Cwd: dir})
 	if err != nil {
 		t.Fatalf("Spawn failed: %v", err)
 	}

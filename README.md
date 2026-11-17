@@ -64,7 +64,7 @@ steps:
       npx playwright test
 ```
 
-Wall-clock becomes `max(build + typecheck, browser download)` instead of the sum — the gain comes entirely from the work you do *between* `run` and `wait`. The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`; Linux and macOS runners are supported.
+Wall-clock becomes `max(build + typecheck, browser download)` instead of the sum — the gain comes entirely from the work you do *between* `run` and `wait`. The action downloads the matching `yoink-<os>-<arch>` binary and adds it to `PATH`; Linux, macOS and Windows runners are supported.
 
 ### Use with AI agents (MCP)
 
@@ -148,13 +148,15 @@ yoink runs a lightweight daemon that holds PTY sessions open for background proc
 
 ## Platform Support
 
-| Feature | Linux | macOS | Windows |
+| Feature | Linux | macOS | Windows 10 1809+ |
 |---------|-------|-------|---------|
-| run/ls/log/wait/send/send-redacted/kill/clean | Yes | Yes | Planned |
-| send --type / --delay / --no-enter / --key | Yes | Yes | Planned |
-| snapshot (VT100 screen render) | Yes | Yes | Planned |
-| attach (PTY reattach) | Yes | Yes | Planned |
-| mcp (Model Context Protocol server) | Yes | Yes | Planned |
+| run/ls/log/wait/send/send-redacted/kill/clean | Yes | Yes | Yes |
+| send --type / --delay / --no-enter / --key | Yes | Yes | Yes |
+| snapshot (VT100 screen render) | Yes | Yes | Yes |
+| attach (PTY reattach) | Yes | Yes | Yes |
+| mcp (Model Context Protocol server) | Yes | Yes | Yes |
+
+On Windows, commands run through `cmd.exe` (`%COMSPEC%`) inside a ConPTY, and `kill` stops the whole process tree (there is no SIGTERM, so it is always forceful). The socket lives at `%USERPROFILE%\.yoink\yoink.sock`. Use `go install` or the release `.zip`; `install.sh` is POSIX-only.
 
 ## Development
 
